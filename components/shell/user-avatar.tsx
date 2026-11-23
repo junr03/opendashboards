@@ -1,6 +1,7 @@
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { requireUser } from "@/lib/auth/user";
 import { cn } from "@/lib/utils";
+
+import { UserMenu } from "./user-menu";
 
 export function initialsFor(name: string): string {
   return name.replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "?";
@@ -24,14 +25,14 @@ export function AvatarCircle({ name, className }: { name: string; className?: st
 export async function UserAvatar() {
   const user = await requireUser();
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span tabIndex={0} aria-label={`Signed in as ${user.email}`} className="rounded-full">
-          <AvatarCircle name={user.email} />
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>Signed in as {user.email}</TooltipContent>
-    </Tooltip>
+    <UserMenu
+      email={user.email}
+      side="bottom"
+      align="end"
+      className="rounded-full focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
+    >
+      <AvatarCircle name={user.email} />
+    </UserMenu>
   );
 }
 
