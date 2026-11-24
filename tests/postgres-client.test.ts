@@ -1,11 +1,15 @@
-import { describe, expect, it } from "vitest";
+import pg from "pg";
+import { afterEach, describe, expect, it } from "vitest";
 
-import { testPostgresConnection, type PostgresTarget } from "@/lib/sources/postgres/client";
+import { local as localSettings } from "@/config/local";
+
 import { isSupabaseDirectHost, parseConnectionString, postgresAddress, suggestConnectionName } from "@/lib/sources/postgres/catalog";
+import { listPostgresTables, queryPostgres, testPostgresConnection, type PostgresTarget } from "@/lib/sources/postgres/client";
 import { PostgresError, toPostgresError } from "@/lib/sources/postgres/errors";
 import { BlockedAddressError, Ipv6OnlyHostError } from "@/lib/net/guarded-socket";
 
 import { TEST_DATABASE_URL } from "./global-setup";
+import { postgresTlsProxy } from "./fixtures/postgres-tls";
 
 describe("parseConnectionString", () => {
   it("reads every field, decoding escapes", () => {
@@ -144,6 +148,28 @@ describe("testPostgresConnection", () => {
       () => "ok",
       (error: unknown) => (error instanceof PostgresError ? error.code : `not a PostgresError: ${String(error)}`),
     );
+
+  const savedRules = localSettings.network.privateDestinations;
+  afterEach(() => { localSettings.network.privateDestinations = savedRules; });
+
+  it("tests, discovers and queries an explicitly authorized private analytics table", async () => {
+    const proxy = await postgresTlsProxy(TEST_DATABASE_URL);
+    const target = { ...local, host: "127.0.0.1", port: proxy.port };
+    const fixture = new pg.Client({ connectionString: TEST_DATABASE_URL });
+    await fixture.connect();
+    try {
+      await fixture.query("CREATE TABLE private_network_demo (value integer); INSERT INTO private_network_demo VALUES (42)");
+      expect(await code(target)).toBe("host_blocked");
+      localSettings.network.privateDestinations = [{ host: target.host, port: target.port }];
+      await expect(testPostgresConnection(target)).resolves.toHaveProperty("serverVersion");
+      expect((await listPostgresTables(target)).rows).toEqual(expect.arrayContaining([expect.objectContaining({ table: "private_network_demo" })]));
+      expect((await queryPostgres(target, "SELECT value FROM private_network_demo", [], 10)).rows).toEqual([{ value: 42 }]);
+    } finally {
+      await fixture.query("DROP TABLE IF EXISTS private_network_demo");
+      await fixture.end();
+      await proxy.close();
+    }
+  });
 
   it("refuses a running local server by name and by IP", async () => {
     expect(await code({})).toBe("host_blocked");

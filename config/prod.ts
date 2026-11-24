@@ -5,5 +5,5 @@ export const prod: EnvironmentSettings = {
   auth: { devUser: null, publicHost: "opendashboards.com" },
   appOrigin: "https://opendashboards.com",
   secrets: { allowPlaintext: false },
-  network: { connectAttemptTimeoutMs: null },
+  network: { connectAttemptTimeoutMs: null, privateDestinations: [] },
 };

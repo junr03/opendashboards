@@ -9,6 +9,14 @@
 export const ENVIRONMENTS = ["local", "prod"] as const;
 export type Environment = (typeof ENVIRONMENTS)[number];
 
+/** Operator permission for one private data-source endpoint, never a whole network. */
+export type PrivateDestination = {
+  host: string;
+  port: number;
+  /** Required for DNS names; literals authorize only their own address. */
+  addresses?: string[];
+};
+
 /**
  * A sample database OpenDashboards offers to users who have no data of their own
  * yet. Users install it (a connection row of theirs that points here) and
@@ -152,6 +160,8 @@ export type EnvironmentSettings = {
     allowPlaintext: boolean;
   };
   network: {
+    /** Exact private endpoints, explicitly authorized by the deployment operator. Empty is public-only. */
+    privateDestinations: PrivateDestination[];
     /**
      * How long Node waits on each of a host's addresses before trying the
      * next when it opens a connection. null keeps Node's default (250ms),

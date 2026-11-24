@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import type { PrivateDestination } from "@/config/settings";
+
 import {
   ConfigError,
   environment,
@@ -37,6 +39,11 @@ describe("environment", () => {
 });
 
 describe("the settings files", () => {
+  it("ships public-only network policy in both environments", () => {
+    expect(settingsFor("local").network).toHaveProperty("privateDestinations", []);
+    expect(settingsFor("prod").network).toHaveProperty("privateDestinations", []);
+  });
+
   it("pass validation as shipped", () => {
     expect(settingsProblems("local", settingsFor("local"))).toEqual([]);
     expect(settingsProblems("prod", settingsFor("prod"))).toEqual([]);
@@ -58,6 +65,56 @@ describe("the settings files", () => {
 });
 
 describe("settingsProblems", () => {
+  it("accepts bounded private destinations in either environment", () => {
+    const settings = editedProd((s) => {
+      s.network.privateDestinations = [
+        { host: "Analytics.Internal.", port: 5432, addresses: ["10.42.0.0/24", "fd7a:115c:a1e0::/64"] },
+        { host: "[::1]", port: 8443 },
+      ];
+    });
+    expect(settingsProblems("prod", settings)).toEqual([]);
+    expect(settingsProblems("local", settings)).toEqual([]);
+  });
+
+  it.each<PrivateDestination>([
+    { host: "*.internal", port: 5432, addresses: ["10.0.0.1"] },
+    { host: "https://analytics.internal", port: 5432, addresses: ["10.0.0.1"] },
+    { host: "analytics.internal", port: 0, addresses: ["10.0.0.1"] },
+    { host: "analytics.internal", port: 65536, addresses: ["10.0.0.1"] },
+    { host: "analytics.internal", port: 5432.5, addresses: ["10.0.0.1"] },
+    { host: "analytics.internal", port: 5432 },
+    { host: "analytics.internal", port: 5432, addresses: [] },
+    { host: "analytics.internal", port: 5432, addresses: ["10.0.0.0/7"] },
+    { host: "analytics.internal", port: 5432, addresses: ["10.0.0.0/33"] },
+    { host: "analytics.internal", port: 5432, addresses: ["10.0.0.0/-1"] },
+    { host: "analytics.internal", port: 5432, addresses: ["0.0.0.0/0"] },
+    { host: "analytics.internal", port: 5432, addresses: ["::/0"] },
+    { host: "analytics.internal", port: 5432, addresses: ["127.1"] },
+    { host: "analytics.internal", port: 5432, addresses: ["8.8.8.8"] },
+    { host: "analytics.internal", port: 5432, addresses: ["169.254.169.254"] },
+    { host: "analytics.internal", port: 5432, addresses: ["fd00:ec2::254"] },
+    { host: "127.0.0.1", port: 5432, addresses: ["10.0.0.0/8"] },
+    { host: "0x7f.1", port: 5432, addresses: ["127.0.0.1"] },
+    { host: "::bad::ip", port: 5432 },
+    { host: "100.100.100.200", port: 443 },
+  ])("refuses invalid private authorization %j", (rule) => {
+    const settings = editedProd((s) => { s.network.privateDestinations = [rule]; });
+    expect(settingsProblems("prod", settings).join(" ")).toContain("network.privateDestinations");
+    expect(settingsProblems("local", settings).join(" ")).toContain("network.privateDestinations");
+  });
+
+  it("rejects duplicate normalized destination pairs", () => {
+    const settings = editedProd((s) => {
+      s.network.privateDestinations = [
+        { host: "Analytics.Internal.", port: 5432, addresses: ["10.0.0.1"] },
+        { host: "analytics.internal", port: 5432, addresses: ["10.0.0.2"] },
+        { host: "127.0.0.1", port: 8443 },
+        { host: "::ffff:127.0.0.1", port: 8443 },
+      ];
+    });
+    expect(settingsProblems("prod", settings)).toHaveLength(2);
+  });
+
   it.each([
     ["a dev user", (s: Settings) => (s.auth.devUser = { id: "dev-user", email: "user@example.dev" }), "auth.devUser"],
     ["no public host", (s: Settings) => (s.auth.publicHost = null), "auth.publicHost"],

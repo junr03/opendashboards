@@ -14,7 +14,7 @@ import { MysqlError, toMysqlError } from "./errors";
  * MySQL and MariaDB, over their own wire protocol to the user's server.
  * Nothing runs on OpenDashboards' side but the driver. What keeps it safe:
  *
- * - The socket only reaches public addresses (lib/net/guarded-socket.ts).
+ * - The socket enforces operator destination policy (lib/net/guarded-socket.ts).
  * - TLS is required; "verify-full" also checks the certificate.
  * - LOCAL_FILES is off: a hostile server can otherwise ask the client to
  *   upload any file it names ("LOAD DATA LOCAL INFILE").

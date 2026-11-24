@@ -2,6 +2,8 @@ import dns from "node:dns";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { local } from "@/config/local";
+
 import { CONNECTION_TYPES } from "@/lib/sources/catalog";
 import { connectionTypeEnum } from "@/lib/db/schema";
 import {
@@ -60,6 +62,30 @@ describe("isPublicAddress", () => {
 });
 
 describe("guarded lookup", () => {
+  describe("a bounded operator-authorized hostname", () => {
+    const savedRules = local.network.privateDestinations;
+    afterEach(() => {
+      local.network.privateDestinations = savedRules;
+      vi.restoreAllMocks();
+    });
+
+    it("checks every connection-time answer against the exact host and port", async () => {
+      local.network.privateDestinations = [{ host: "db.internal", port: 5432, addresses: ["10.42.0.0/24"] }];
+      const answers = [{ address: "10.42.0.8", family: 4 }];
+      vi.spyOn(dns, "lookup").mockImplementation(((_host: string, _options: unknown, callback: (e: null, a: dns.LookupAddress[]) => void) => callback(null, answers)) as typeof dns.lookup);
+      const lookup = (host: string, port: number) => new Promise((resolve, reject) => {
+        createGuardedLookup(port)(host, { all: true }, (error, addresses) => error ? reject(error) : resolve(addresses));
+      });
+      await expect(lookup("db.internal", 5432)).resolves.toEqual([{ address: "10.42.0.8", family: 4 }]);
+      await expect(lookup("alias.internal", 5432)).rejects.toBeInstanceOf(BlockedAddressError);
+      await expect(lookup("db.internal", 5433)).rejects.toBeInstanceOf(BlockedAddressError);
+      answers.push({ address: "10.43.0.8", family: 4 });
+      await expect(lookup("db.internal", 5432)).rejects.toBeInstanceOf(BlockedAddressError);
+      answers.splice(0, answers.length, { address: "8.8.8.8", family: 4 });
+      await expect(lookup("db.internal", 5432)).rejects.toBeInstanceOf(BlockedAddressError);
+    });
+  });
+
   it("refuses a name that resolves to loopback", async () => {
     const lookup = new Promise<unknown>((resolve, reject) =>
       createGuardedLookup()("localhost", {}, (error, address) => (error ? reject(error) : resolve(address))),

@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { config as appConfig } from "@/config";
 
+import { BLOCKED_DESTINATION_MESSAGE } from "../host";
 import { passwordHint } from "../password-hint";
 import type { ConnectionSource, SourceError, SourceTool } from "../types";
 
@@ -85,7 +86,7 @@ export const mysqlSource: ConnectionSource<MysqlConfig> = {
         return invalid({
           code: "host_blocked",
           field: "host",
-          message: "This host points to a private or reserved address. OpenDashboards only connects to databases reachable on the public internet.",
+          message: BLOCKED_DESTINATION_MESSAGE,
         });
       case "host_not_found":
         return invalid({ code: "host_not_found", field: "host", message: "This host name doesn't resolve. Check it for typos." });
