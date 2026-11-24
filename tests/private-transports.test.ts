@@ -63,6 +63,26 @@ describe("private destinations through production transport guards", () => {
     }
   });
 
+  it("fetch does not reuse the first origin's DNS permission for another port", async () => {
+    let otherRequests = 0;
+    const other = https.createServer({
+      key: readFileSync(join(certDir, "key.pem")), cert: readFileSync(join(certDir, "cert.pem")),
+    }, (_req, res) => { otherRequests++; res.end("not authorized"); });
+    await new Promise<void>((resolve) => other.listen(0, "127.0.0.1", resolve));
+    const otherPort = (other.address() as AddressInfo).port;
+    local.network.privateDestinations = [{ host: "localhost", port, addresses: ["127.0.0.0/8", "::1"] }];
+    const guarded = createGuardedFetch({ origin: "any-https", ...limits, rejectUnauthorized: false });
+    try {
+      expect(await (await guarded(`https://localhost:${port}/`)).json()).toEqual({ ok: true });
+      await expect(guarded(`https://localhost:${otherPort}/`)).rejects.toSatisfy(hasBlockedCause);
+      expect(otherRequests).toBe(0);
+    } finally {
+      await guarded.close();
+      other.closeAllConnections();
+      await new Promise<void>((resolve) => other.close(() => resolve()));
+    }
+  });
+
   const request = async (transport: string, target: URL) => {
     if (transport === "HTTPS") return (await guardedHttpsRequest(target, { ...limits, rejectUnauthorized: false })).body;
     if (transport === "fetch") {
