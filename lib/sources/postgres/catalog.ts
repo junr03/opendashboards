@@ -174,7 +174,7 @@ export function postgresAddress(config: Pick<PostgresConfig, "host" | "port" | "
 export const postgresCatalog: SourceCatalog<PostgresConfig, "postgres"> = {
   type: "postgres",
   label: "Postgres",
-  blurb: "Any database reachable on the public internet",
+  blurb: "PostgreSQL with read-only credentials",
   tile: "PG",
   configSchema: postgresConfigSchema,
   describe: (config) => {

@@ -2,6 +2,8 @@ import "server-only";
 
 import { secrets } from "@/config";
 
+import { normalizeHost } from "./destination-policy";
+
 /**
  * Our own infrastructure's host names, which no user connection may point
  * at: the database that holds every user's connections, apps and sealed
@@ -16,7 +18,7 @@ const withoutPooler = (host: string) => host.replace(/^([^.]+)-pooler\./, "$1.")
 function hostOf(url: string | undefined): string | null {
   if (!url) return null;
   try {
-    const host = new URL(url).hostname.toLowerCase().replace(/^\[(.*)\]$/, "$1").replace(/\.$/, "");
+    const host = normalizeHost(new URL(url).hostname);
     return host || null;
   } catch {
     return null;
@@ -25,7 +27,7 @@ function hostOf(url: string | undefined): string | null {
 
 /** Whether `host` is one of ours. Compared case-insensitively, pooled and direct alike. */
 export function isOwnHost(host: string): boolean {
-  const candidate = withoutPooler(host.toLowerCase().replace(/^\[(.*)\]$/, "$1").replace(/\.$/, ""));
+  const candidate = withoutPooler(normalizeHost(host));
   return [secrets.databaseUrl(), secrets.databaseUrlUnpooled()]
     .map(hostOf)
     .some((own) => own !== null && withoutPooler(own) === candidate);

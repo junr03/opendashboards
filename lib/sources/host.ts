@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+export const BLOCKED_DESTINATION_MESSAGE =
+  "This destination is blocked by this deployment's network policy. Check the host and port with your deployment operator.";
+
 /**
  * Host and port fields shared by sources that connect to a server the user
  * names. Client-safe. Where the host may point is enforced at connect time

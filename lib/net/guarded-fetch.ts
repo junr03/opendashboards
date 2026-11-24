@@ -3,9 +3,9 @@ import "server-only";
 import dns from "node:dns";
 import net from "node:net";
 
-import { Agent, fetch as undiciFetch, type Dispatcher } from "undici";
+import { Agent, buildConnector, fetch as undiciFetch, type Dispatcher } from "undici";
 
-import { BlockedAddressError, createGuardedLookup, isPublicAddress } from "./guarded-socket";
+import { BlockedAddressError, createGuardedLookup, isAllowedAddress } from "./guarded-socket";
 import { isOwnHost } from "./own-hosts";
 
 /**
@@ -16,8 +16,8 @@ import { isOwnHost } from "./own-hosts";
  *   else (another host a server pointed to, a path elsewhere) is refused, so
  *   credentials in its headers can't travel.
  * - HTTPS only, certificates checked; no user info in URLs.
- * - Every connection goes through the guarded lookup: public unicast
- *   addresses only, checked on the addresses actually connected to (no DNS
+ * - Every connection goes through the guarded lookup: public or explicitly
+ *   operator-authorized addresses, checked on the addresses actually connected to (no DNS
  *   rebinding), and never our own infrastructure. IP literals are checked
  *   directly, after URL parsing has normalized forms like 0x7f.1.
  * - Its own dispatcher, so proxy environment variables never route it
@@ -52,7 +52,7 @@ export class RedirectRefusedError extends Error {
 export type GuardedFetchOptions = {
   /**
    * The only origin requests may go to: "https://mcp.example.com". "any-https"
-   * allows any HTTPS origin, still public-only and never ours, for OAuth
+   * allows any HTTPS origin, still subject to destination policy and never ours, for OAuth
    * discovery, where the next host comes from the previous answer. Never use
    * it for requests that carry a credential meant for one server.
    */
@@ -87,14 +87,29 @@ export function createGuardedFetch(options: GuardedFetchOptions, testHooks: Guar
   const allowed = anyOrigin ? null : new URL(options.origin);
   const protocolAllowed = (protocol: string) => protocol === "https:" || (allowHttp && protocol === "http:");
   if (allowed && !protocolAllowed(allowed.protocol)) throw new OriginNotAllowedError(options.origin);
-  const isAllowedAddress = testHooks.allowAddress ?? isPublicAddress;
-  const lookup = testHooks.allowAddress ? createTestLookup(testHooks.allowAddress) : createGuardedLookup();
+  const checkLiteral = (host: string, port: number) => {
+    if (isOwnHost(host) || (net.isIP(host) && !(testHooks.allowAddress?.(host) ?? isAllowedAddress(host, port, host)))) {
+      throw new BlockedAddressError(host, host);
+    }
+  };
 
   const dispatcher: Dispatcher = new Agent({
-    connect: {
-      lookup: lookup as net.LookupFunction,
-      rejectUnauthorized: options.rejectUnauthorized ?? true,
-      ...(testHooks.ca ? { ca: testHooks.ca } : {}),
+    connect(destination, callback) {
+      const port = Number(destination.port || (destination.protocol === "https:" ? 443 : 80));
+      try {
+        checkLiteral(destination.hostname, port);
+      } catch (error) {
+        callback(error as Error, null);
+        return;
+      }
+      // OAuth discovery may use several origins in one dispatcher. Bind the
+      // lookup to this connection's port, never the first requested origin.
+      const lookup = testHooks.allowAddress ? createTestLookup(testHooks.allowAddress) : createGuardedLookup(port);
+      buildConnector({
+        lookup: lookup as net.LookupFunction,
+        rejectUnauthorized: options.rejectUnauthorized ?? true,
+        ...(testHooks.ca ? { ca: testHooks.ca } : {}),
+      })(destination, callback);
     },
     // One request at a time per connection; nothing pooled for long.
     keepAliveTimeout: 1_000,
@@ -106,7 +121,7 @@ export function createGuardedFetch(options: GuardedFetchOptions, testHooks: Guar
     const outside = allowed ? url.origin !== allowed.origin : !protocolAllowed(url.protocol);
     if (outside || url.username || url.password) throw new OriginNotAllowedError(url.href);
     const host = url.hostname.replace(/^\[(.*)\]$/, "$1");
-    if ((net.isIP(host) && !isAllowedAddress(host)) || isOwnHost(host)) throw new BlockedAddressError(host, host);
+    checkLiteral(host, Number(url.port || (url.protocol === "https:" ? 443 : 80)));
 
     const deadline = AbortSignal.timeout(options.timeoutMs);
     const signal = init.signal ? AbortSignal.any([init.signal, deadline]) : deadline;

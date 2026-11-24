@@ -14,7 +14,7 @@ import { McpError, toMcpError } from "./errors";
  * HTTP transport only. Nothing runs on our side. What keeps it safe:
  *
  * - Every request goes through a guarded fetch bound to the server's origin:
- *   HTTPS, public addresses only (never ours), no redirects, capped bodies,
+ *   HTTPS, operator destination policy (never ours), no redirects, capped bodies,
  *   one deadline. The API key can't leave that origin.
  * - No OAuth: there's no auth provider, so a 401 just fails; no metadata or
  *   sign-in URL a server names is ever fetched.

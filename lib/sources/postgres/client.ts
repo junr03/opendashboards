@@ -70,7 +70,7 @@ export function postgresClientConfig(target: PostgresTarget): pg.ClientConfig {
 
 /**
  * Opens a connection, runs `fn` inside a READ ONLY transaction, rolls back and
- * disconnects. The socket only reaches public addresses (see
+ * disconnects. The socket enforces operator destination policy (see
  * lib/net/guarded-socket.ts), and TLS follows the SSL mode.
  */
 async function withReadOnly<T>(target: PostgresTarget, fn: (client: pg.Client) => Promise<T>): Promise<T> {

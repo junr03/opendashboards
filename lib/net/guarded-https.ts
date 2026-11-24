@@ -3,11 +3,12 @@ import "server-only";
 import https from "node:https";
 import net from "node:net";
 
-import { BlockedAddressError, createGuardedLookup, isPublicAddress } from "./guarded-socket";
+import { BlockedAddressError, createGuardedLookup, isAllowedAddress } from "./guarded-socket";
+import { isOwnHost } from "./own-hosts";
 
 /**
  * HTTPS to a host a user typed in (a ClickHouse server, say), with the same
- * SSRF rules as the guarded socket: only public addresses, checked on the
+ * SSRF rules as the guarded socket: public or operator-authorized addresses, checked on the
  * addresses actually connected to. Plain HTTP is refused, redirects are never
  * followed, and the response is capped so a server can't exhaust our memory.
  */
@@ -46,8 +47,9 @@ export function guardedHttpsRequest(target: URL, request: GuardedRequest): Promi
       return;
     }
     const hostname = target.hostname.replace(/^\[(.*)\]$/, "$1");
+    const port = Number(target.port || 443);
     // Node skips the lookup for IP literals, so check those directly.
-    if (net.isIP(hostname) && !isPublicAddress(hostname)) {
+    if ((net.isIP(hostname) && !isAllowedAddress(hostname, port, hostname)) || isOwnHost(hostname)) {
       reject(new BlockedAddressError(hostname, hostname));
       return;
     }
@@ -57,7 +59,7 @@ export function guardedHttpsRequest(target: URL, request: GuardedRequest): Promi
       {
         method: request.method ?? "GET",
         headers: request.headers,
-        lookup: createGuardedLookup() as net.LookupFunction,
+        lookup: createGuardedLookup(port) as net.LookupFunction,
         signal: request.signal,
         timeout: request.timeoutMs,
         rejectUnauthorized: request.rejectUnauthorized ?? true,

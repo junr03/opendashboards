@@ -7,5 +7,5 @@ export const local: EnvironmentSettings = {
   appOrigin: `http://localhost:${process.env.PORT || 3100}`,
   secrets: { allowPlaintext: true },
   // Home and office networks are often slow, or have IPv6 that goes nowhere.
-  network: { connectAttemptTimeoutMs: 2_000 },
+  network: { connectAttemptTimeoutMs: 2_000, privateDestinations: [] },
 };

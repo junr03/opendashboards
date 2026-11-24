@@ -54,7 +54,7 @@ export function parseMysqlUrl(input: string): Partial<MysqlConfig & { password: 
 export const mysqlCatalog: SourceCatalog<MysqlConfig, "mysql"> = {
   type: "mysql",
   label: "MySQL",
-  blurb: "MySQL or MariaDB, reachable on the public internet",
+  blurb: "MySQL or MariaDB with read-only credentials",
   tile: "MY",
   configSchema: mysqlConfigSchema,
   describe: (config) => ({ source: "MySQL", shortSource: "MySQL", detail: mysqlAddress(config), tile: "MY" }),

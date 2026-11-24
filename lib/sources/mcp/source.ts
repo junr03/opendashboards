@@ -2,6 +2,7 @@ import "server-only";
 
 import { z } from "zod";
 
+import { BLOCKED_DESTINATION_MESSAGE } from "../host";
 import type { ConnectionSource, OpenConnection, SourceError, SourceTool } from "../types";
 
 import { mcpCatalog, mcpKeySchema, type McpConfig } from "./catalog";
@@ -159,7 +160,7 @@ export const mcpSource: ConnectionSource<McpConfig> = {
         return invalid({
           code: "host_blocked",
           field: "url",
-          message: "This address is private, reserved or ours. OpenDashboards only connects to MCP servers on the public internet.",
+          message: BLOCKED_DESTINATION_MESSAGE,
         });
       case "host_not_found":
         return invalid({ code: "host_not_found", field: "url", message: "This host name doesn't resolve. Check the URL for typos." });

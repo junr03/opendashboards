@@ -12,7 +12,7 @@ import { ClickhouseError, fromResponse, toClickhouseError } from "./errors";
  * ClickHouse over its HTTPS interface: the query runs on the user's server,
  * nothing runs here. What keeps it safe:
  *
- * - Requests only reach public addresses, never follow redirects, and the
+ * - Requests enforce operator destination policy, never follow redirects, and the
  *   response is capped (lib/net/guarded-https.ts).
  * - Every request runs with readonly=1. The server then refuses writes, DDL,
  *   temporary tables, and with them every table function that reaches

@@ -102,6 +102,8 @@ Fork the repo, implement your auth, and deploy. Auth is one interface, `AuthProv
 [`lib/auth/providers/`](lib/auth/providers/) and pick it in
 [`lib/auth/index.ts`](lib/auth/index.ts).
 
+For databases on private networks, see [operator-authorized private data sources](docs/private-data-sources.md).
+
 ## How it works
 
 1. **Connect** your databases and tools. Credentials are encrypted and stay on your server.

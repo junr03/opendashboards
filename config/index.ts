@@ -1,4 +1,5 @@
 import { common } from "./common";
+import { privateDestinationProblems } from "../lib/net/destination-policy";
 import { local } from "./local";
 import { prod } from "./prod";
 import type { Environment, EnvironmentSettings, Settings } from "./settings";
@@ -66,7 +67,7 @@ export const secrets = {
  * change Node's connection defaults.
  */
 export function settingsProblems(name: Environment, settings: Settings): string[] {
-  const problems = demoDatasetProblems(settings);
+  const problems = [...demoDatasetProblems(settings), ...privateDestinationProblems(settings.network.privateDestinations)];
   if (name === "local") return problems;
   if (settings.auth.devUser !== null) problems.push(`${name}: auth.devUser must be null; only local may skip the gateway`);
   if (settings.auth.publicHost === null) problems.push(`${name}: auth.publicHost must be set; it sits behind the gateway`);

@@ -28,7 +28,7 @@ import { McpError, toMcpError } from "./errors";
  * adds what the SDK leaves to the app, and checks it doesn't do:
  *
  * - Every request (discovery, registration, token) goes through the guarded
- *   fetch: HTTPS, public addresses only, never ours, no redirects, capped.
+ *   fetch: HTTPS, operator destination policy, never ours, no redirects, capped.
  * - The authorization server's metadata must name the issuer it was fetched
  *   for (RFC 8414 §3.3), every endpoint must be HTTPS, and PKCE S256 must be
  *   supported. The protected-resource metadata must be for this server.
