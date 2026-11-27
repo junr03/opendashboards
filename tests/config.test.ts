@@ -15,7 +15,7 @@ import {
 const PROD_SECRETS = {
   NODE_ENV: "production",
   DATABASE_URL: "postgres://db",
-  THESYS_API_KEY: "key",
+
   KMS_KEY_ID: "kms",
   KMS_ROLE_ARN: "arn:aws:iam::1:role/opendashboards",
   SUPABASE_URL: "https://project.supabase.co",
@@ -60,7 +60,7 @@ describe("the settings files", () => {
   });
 
   it("share common settings", () => {
-    expect(settingsFor("local").openui).toEqual(settingsFor("prod").openui);
+    expect(settingsFor("local").inference).toEqual(settingsFor("prod").inference);
   });
 });
 
@@ -134,19 +134,19 @@ describe("secretProblems", () => {
 
   it("names each missing secret prod needs", () => {
     const problems = secretProblems("prod", settingsFor("prod"), { NODE_ENV: "production" });
-    expect(problems.join("\n")).toMatch(/DATABASE_URL[\s\S]*THESYS_API_KEY[\s\S]*SUPABASE_URL[\s\S]*KMS_KEY_ID[\s\S]*KMS_ROLE_ARN/);
+    expect(problems.join("\n")).toMatch(/DATABASE_URL[\s\S]*AUTH_SECRET[\s\S]*SUPABASE_URL[\s\S]*KMS_KEY_ID[\s\S]*KMS_ROLE_ARN/);
   });
 
   it("needs the demo password in prod when demo datasets are on offer, but not locally", () => {
     const { DEMO_DATABASE_PASSWORD: _, ...withoutDemo } = PROD_SECRETS;
-    expect(secretProblems("prod", settingsFor("prod"), withoutDemo)).toEqual([
+    expect(secretProblems("prod", settingsFor("prod"), { ...withoutDemo, ENABLE_DEMO_DATA: "1" })).toEqual([
       "DEMO_DATABASE_PASSWORD is not set; prod offers demo datasets",
     ]);
-    expect(secretProblems("prod", editedProd((s) => (s.demoData.datasets = [])), withoutDemo)).toEqual([]);
+    expect(secretProblems("prod", editedProd((s) => (s.demoData.datasets = [])), { ...withoutDemo, ENABLE_DEMO_DATA: "1" })).toEqual([]);
   });
 
-  it("needs only the database and OpenUI key locally", () => {
-    expect(secretProblems("local", settingsFor("local"), { DATABASE_URL: "postgres://db", THESYS_API_KEY: "key" })).toEqual([]);
+  it("needs only the database locally", () => {
+    expect(secretProblems("local", settingsFor("local"), { DATABASE_URL: "postgres://db" })).toEqual([]);
   });
 });
 

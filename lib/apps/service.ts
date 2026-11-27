@@ -236,7 +236,7 @@ export function createAppService({ db, now = () => new Date() }: { db: Database;
 
     /**
      * Deletes the app and, through the foreign keys, its dashboards, thread
-     * mappings and connection usage. Deleting the Cloud dashboards and
+     * content and connection usage. Deleting dashboards and
      * conversations comes with the chat milestone.
      */
     remove(userId: string, input: unknown): Promise<AppResult> {

@@ -1,12 +1,11 @@
 import { EventType, type BaseEvent } from "@ag-ui/core";
-import { storeChatCompletionHistory } from "@openuidev/server/openai";
 import { waitUntil } from "@vercel/functions";
 import { APIError } from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 
-import { secrets } from "@/config";
+import { getInference } from "@/lib/inference";
 import { track } from "@/lib/analytics";
-import { agentTools, getGateway, maxRounds, model, SYSTEM_PROMPT, type TurnContext } from "@/lib/agent";
+import { agentTools, maxRounds, model, SYSTEM_PROMPT, type TurnContext } from "@/lib/agent";
 import { createAgUiTranslator, sse } from "@/lib/agent/ag-ui";
 import { answerStoppedCalls, chatBodySchema, VIEWING_DASHBOARD, type ChatBody } from "@/lib/agent/messages";
 import { getAppService, getThreadService } from "@/lib/apps";
@@ -20,10 +19,10 @@ type Ctx = { params: Promise<{ appId: string }> };
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 
 /**
- * One turn of the Build chat. Runs the agent's tool loop over OpenUI Gateway
+ * One turn of the Build chat. Runs the agent's tool loop over the configured model server
  * and streams it as AG-UI events (text, tool calls and their results) for
  * the chat's `agUIAdapter`. When the turn ends, or the user stops it, it's
- * saved to the thread in OpenUI Cloud.
+ * saved to the local conversation.
  */
 export const POST = route<Ctx>(async (request, user, { params }) => {
   const { appId } = await params;
@@ -82,7 +81,7 @@ export const POST = route<Ctx>(async (request, user, { params }) => {
       const translate = createAgUiTranslator(emit);
       emit({ type: EventType.RUN_STARTED, threadId, runId } as BaseEvent);
 
-      const runner = getGateway().chat.completions.runTools(
+      const runner = getInference().chat.completions.runTools(
         {
           model: model(),
           messages: [...system, ...messages],
@@ -100,12 +99,7 @@ export const POST = route<Ctx>(async (request, user, { params }) => {
 
       const save = async (turnMessages: ChatCompletionMessageParam[]) => {
         try {
-          await storeChatCompletionHistory({
-            apiKey: secrets.thesysApiKey() ?? "",
-            conversationId: threadId,
-            messages: turnMessages,
-          });
-          await threads.touch(user.id, appId, threadId);
+          await threads.append(user.id, appId, threadId, runId, turnMessages);
         } catch (error) {
           logError("chat.save", error);
         }
@@ -155,18 +149,18 @@ export const POST = route<Ctx>(async (request, user, { params }) => {
   });
 });
 
-/** What the chat shows when a turn fails, OpenUI Gateway's refusals by name, and a label for alerts. */
+/** What the chat shows when a turn fails, the model server's refusals by name, and a label for alerts. */
 function turnFailure(error: unknown): { cause: string; message: string } {
   if (error instanceof APIError) {
-    // An error Gateway sends inside the stream has no HTTP status; its code carries it ("429").
+    // An error the model server sends inside the stream has no HTTP status; its code carries it ("429").
     const status = error.status ?? (typeof error.code === "string" ? Number(error.code) : undefined);
     if (status === 429) {
-      return { cause: "rate_limited", message: "OpenUI Gateway is rate-limiting requests right now. Try again in a minute." };
+      return { cause: "rate_limited", message: "The model server is rate-limiting requests right now. Retry after the model server has capacity." };
     }
-    if (status === 401 || status === 403) return { cause: "key_refused", message: "OpenUI Gateway refused OpenDashboards' API key." };
-    if (status === 402) return { cause: "out_of_credits", message: "OpenUI Gateway says this account is out of credits." };
+    if (status === 401 || status === 403) return { cause: "key_refused", message: "The model server refused the configured API key." };
+    if (status === 402) return { cause: "out_of_credits", message: "The model server says this account is out of credits." };
     if (typeof status === "number" && status >= 500) {
-      return { cause: "upstream_error", message: `OpenUI Gateway had an error (HTTP ${status}). Try again.` };
+      return { cause: "upstream_error", message: `The model server had an error (HTTP ${status}). Try again.` };
     }
   }
   return { cause: "other", message: "The agent stopped unexpectedly. Try again." };

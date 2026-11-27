@@ -1,5 +1,5 @@
 // Writes @openuidev/dashboard-library's spec and prompt options for the server: OpenUI
-// Cloud generates dashboards against them. The library's components are client modules,
+// Local inference generates dashboards against them. The library's components are client modules,
 // so the server reads these files instead of importing the package. Regenerated, never edited.
 import { mkdirSync, writeFileSync } from "node:fs";
 

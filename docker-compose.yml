@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: opendashboards
       POSTGRES_DB: opendashboards
     ports:
-      - "54329:5432"
+      - "127.0.0.1:54329:5432"
     volumes:
       - opendashboards-postgres:/var/lib/postgresql/data
       - ./db/init:/docker-entrypoint-initdb.d:ro
@@ -19,5 +19,30 @@ services:
       timeout: 3s
       retries: 20
 
+  app:
+    profiles: ["app"]
+    build: .
+    ports:
+      - "127.0.0.1:3100:3100"
+    env_file: .env.local
+    environment:
+      DATABASE_URL: postgres://opendashboards:opendashboards@postgres:5432/opendashboards
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://ollama:11434/v1}
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3100}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  ollama:
+    profiles: ["inference"]
+    image: ollama/ollama:latest
+    volumes:
+      - opendashboards-models:/root/.ollama
+    restart: unless-stopped
+
 volumes:
   opendashboards-postgres:
+  opendashboards-models:

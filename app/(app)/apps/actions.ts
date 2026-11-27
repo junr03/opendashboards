@@ -11,7 +11,7 @@ import { requireUser } from "@/lib/auth/user";
 import { getAppService } from "@/lib/apps";
 import { getConnectionService } from "@/lib/connections";
 import { fail, type AppResult } from "@/lib/apps/errors";
-import { deleteAppDashboardsInCloud, deleteDashboard, getDashboardService } from "@/lib/dashboards";
+import { deleteDashboard, getDashboardService } from "@/lib/dashboards";
 
 /*
  * Public POST endpoints like every Server Action: each authenticates itself,
@@ -64,13 +64,7 @@ export async function addAppConnectionAction(input: unknown): Promise<AppResult>
 /** Deletes the app and goes back to the list. Returns only on failure. */
 export async function deleteAppAction(input: unknown): Promise<AppResult<never>> {
   const user = await requireUser();
-  // Its dashboards live in OpenUI Cloud; delete them first so none are left behind.
-  const appId = (input as { id?: unknown } | null)?.id;
-  if (typeof appId === "string" && z.uuid().safeParse(appId).success) {
-    if (!(await deleteAppDashboardsInCloud(user.id, appId))) {
-      return fail({ code: "internal", message: "OpenUI Cloud couldn't delete the app's dashboards. Try again." });
-    }
-  }
+  // App deletion cascades to local programs, versions, conversations and messages.
   const result = await getAppService().remove(user.id, input);
   if (!result.ok) return result;
   revalidateShell();
@@ -129,7 +123,7 @@ export async function updateDashboardAction(input: unknown): Promise<AppResult> 
 
 const deleteDashboardSchema = z.object({ appId: z.uuid(), dashboardId: z.uuid() }).strict();
 
-/** Deletes one dashboard of an app, in OpenUI Cloud and in the sidebar. */
+/** Deletes one dashboard of an app, in OpenDashboards and in the sidebar. */
 export async function deleteDashboardAction(input: unknown): Promise<AppResult> {
   const user = await requireUser();
   const parsed = deleteDashboardSchema.safeParse(input);
@@ -143,7 +137,7 @@ export async function deleteDashboardAction(input: unknown): Promise<AppResult> 
   if (!result.ok) {
     return result.reason === "not_found"
       ? fail({ code: "not_found", message: "This dashboard doesn't exist or was deleted." })
-      : fail({ code: "internal", message: "OpenUI Cloud couldn't delete the dashboard. Try again." });
+      : fail({ code: "internal", message: "OpenDashboards couldn't delete the dashboard. Try again." });
   }
   revalidateShell();
   return { ok: true, data: undefined };

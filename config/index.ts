@@ -49,8 +49,11 @@ export const secrets = {
   databaseUrl: () => process.env.DATABASE_URL,
   /** The same database's direct (unpooled) URL, for migrations. Set by Neon on Vercel. */
   databaseUrlUnpooled: () => process.env.DATABASE_URL_UNPOOLED,
-  /** OpenUI Cloud and Gateway. */
-  thesysApiKey: () => process.env.THESYS_API_KEY,
+  /** Optional credentials for the operator's inference server. */
+  llmApiKey: () => process.env.LLM_API_KEY,
+  encryptionKey: () => process.env.ENCRYPTION_KEY,
+  authPassword: () => process.env.AUTH_PASSWORD,
+  authSecret: () => process.env.AUTH_SECRET,
   /** Seals data-source keys with AWS KMS. */
   kmsKeyId: () => process.env.KMS_KEY_ID,
   /** The AWS role Vercel OIDC assumes to use that key. Not secret, but set per deployment. */
@@ -67,11 +70,17 @@ export const secrets = {
  * change Node's connection defaults.
  */
 export function settingsProblems(name: Environment, settings: Settings): string[] {
-  const problems = [...demoDatasetProblems(settings), ...privateDestinationProblems(settings.network.privateDestinations)];
+  const inferenceProblems: string[] = [];
+  try {
+    const url = new URL(settings.inference.baseUrl);
+    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash) inferenceProblems.push("inference.baseUrl must be an http(s) URL without credentials, query, or fragment");
+  } catch { inferenceProblems.push("inference.baseUrl must be a valid URL"); }
+  if (!settings.inference.model.trim() || !settings.inference.dashboardModel.trim()) inferenceProblems.push("Inference models must be nonempty");
+  const problems = [...inferenceProblems, ...demoDatasetProblems(settings), ...privateDestinationProblems(settings.network.privateDestinations)];
   if (name === "local") return problems;
   if (settings.auth.devUser !== null) problems.push(`${name}: auth.devUser must be null; only local may skip the gateway`);
   if (settings.auth.publicHost === null) problems.push(`${name}: auth.publicHost must be set; it sits behind the gateway`);
-  if (!/^https:\/\/[^/]+$/.test(settings.appOrigin)) problems.push(`${name}: appOrigin must be an https:// origin, without a path`);
+  if (!/^https:\/\/[^/]+$/.test(settings.appOrigin) && !/^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::[0-9]+)?$/.test(settings.appOrigin)) problems.push(`${name}: appOrigin must be an https:// origin, without a path`);
   if (settings.secrets.allowPlaintext) problems.push(`${name}: secrets.allowPlaintext must be false; keys are never stored unencrypted outside local`);
   if (settings.network.connectAttemptTimeoutMs !== null) {
     problems.push(`${name}: network.connectAttemptTimeoutMs must be null; only local changes Node's connection defaults`);
@@ -104,18 +113,18 @@ function demoDatasetProblems(settings: Settings): string[] {
 export function secretProblems(name: Environment, settings: Settings, env: Env = process.env): string[] {
   const problems: string[] = [];
   if (!env.DATABASE_URL) problems.push("DATABASE_URL is not set");
-  if (!env.THESYS_API_KEY) problems.push("THESYS_API_KEY is not set");
-  if (settings.auth.devUser === null && !env.SUPABASE_URL) {
-    problems.push(`SUPABASE_URL is not set; ${name} has no dev user, so requests must carry a verified token`);
+
+  if (settings.auth.devUser === null && !env.SUPABASE_URL && !env.AUTH_SECRET) {
+    problems.push(`Set AUTH_SECRET and AUTH_PASSWORD, or SUPABASE_URL; ${name} requires authentication`);
   }
-  if (!settings.secrets.allowPlaintext && !env.KMS_KEY_ID) {
-    problems.push(`KMS_KEY_ID is not set; ${name} never stores keys unencrypted`);
+  if (!settings.secrets.allowPlaintext && !env.ENCRYPTION_KEY && (!env.KMS_KEY_ID || !env.KMS_ROLE_ARN)) {
+    problems.push(`Set ENCRYPTION_KEY, or both KMS_KEY_ID and KMS_ROLE_ARN; ${name} requires encrypted credential storage`);
   }
-  if (!settings.secrets.allowPlaintext && !env.KMS_ROLE_ARN) {
-    problems.push(`KMS_ROLE_ARN is not set; ${name} reaches KMS through Vercel OIDC`);
-  }
+  if (env.ENCRYPTION_KEY && !/^[a-f0-9]{64}$/i.test(env.ENCRYPTION_KEY)) problems.push("ENCRYPTION_KEY must be 64 hexadecimal characters");
+  if (env.AUTH_SECRET && env.AUTH_SECRET.length < 32) problems.push("AUTH_SECRET must contain at least 32 characters");
+  if (env.AUTH_SECRET && (!env.AUTH_PASSWORD || env.AUTH_PASSWORD.length < 16)) problems.push("AUTH_PASSWORD must contain at least 16 characters");
   // Locally, demo datasets are optional: without the password they're simply not offered.
-  if (name !== "local" && settings.demoData.datasets.length && !env.DEMO_DATABASE_PASSWORD) {
+  if (name !== "local" && env.ENABLE_DEMO_DATA === "1" && settings.demoData.datasets.length && !env.DEMO_DATABASE_PASSWORD) {
     problems.push(`DEMO_DATABASE_PASSWORD is not set; ${name} offers demo datasets`);
   }
   return problems;

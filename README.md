@@ -24,9 +24,10 @@ Connect your databases and tools, ask a question in plain words, and get a live,
 dashboard that pulls from all of them. Filter it, drill down, and edit one chart without
 touching the rest.
 
-OpenDashboards is open source (MIT). It builds dashboards with the OpenUI Dashboards API, so you
-can use any model and host it anywhere: at [opendashboards.com](https://opendashboards.com), or
-on your own servers.
+This fork is an independent, self-hosted implementation. It uses your OpenAI-compatible model
+server (Ollama/vLLM), stores dashboards and chats in your Postgres, and executes generated
+scripts locally in QuickJS WebAssembly. No OpenUI Cloud account or Gateway key is required.
+See the [deployment and migration guide](docs/self-hosting.md).
 
 ## Product tour
 
@@ -46,9 +47,8 @@ One question, one dashboard, from every tool that has part of the answer.
 ## Why OpenDashboards
 
 - **Your data, your servers.** Connection credentials stay on your server, and queries run
-  from it. For complete isolation, OpenUI Cloud can be privately hosted inside your network.
-- **Any model.** Use any model the OpenUI Dashboards API supports, or bring your own OpenAI
-  or Anthropic key.
+  from it. Generation, storage, and script execution run in your own deployment.
+- **Any model.** Connect your own OpenAI-compatible inference endpoint and select its model.
 - **Live and interactive.** Dashboards stay connected to your data. Filter them and drill
   down, and they update when the data does.
 - **Edit one chart.** Ask for a change and only that chart is built again.
@@ -79,17 +79,16 @@ Sign up at [opendashboards.com](https://opendashboards.com). Nothing to install.
 
 ### Run it yourself
 
-You need Node 20.9 or later, pnpm and Docker, and a Thesys API key from
-[console.thesys.dev](https://console.thesys.dev). OpenUI Cloud has a generous free tier.
+You need Node 24, pnpm 9.15.4, Docker, and an OpenAI-compatible inference server.
 
 ```bash
-git clone https://github.com/thesysdev/opendashboards.git
+git clone https://github.com/junr03/opendashboards.git
 cd opendashboards
-pnpm install
-cp .env.example .env.local   # then add THESYS_API_KEY
-pnpm db:up                   # Postgres on localhost:54329 (plus an opendashboards_test database)
-pnpm db:reset                # create the tables from lib/db/schema.ts
-pnpm dev                     # http://localhost:3000
+corepack pnpm install
+cp .env.example .env.local   # set LLM_BASE_URL and LLM_MODEL
+corepack pnpm db:up
+corepack pnpm db:migrate     # additive; preserves existing data
+corepack pnpm dev --port 3100
 ```
 
 Locally, every request acts as the dev user in `config/local.ts`, and connection keys are
@@ -97,10 +96,10 @@ stored unencrypted. Production refuses both.
 
 ### Deploy to production
 
-Fork the repo, implement your auth, and deploy. Auth is one interface, `AuthProvider` in
-[`lib/auth/provider.ts`](lib/auth/provider.ts): add yours to
-[`lib/auth/providers/`](lib/auth/providers/) and pick it in
-[`lib/auth/index.ts`](lib/auth/index.ts).
+Standalone production hosting includes an operator login and AES-256-GCM credential storage.
+Set `AUTH_PASSWORD`, `AUTH_SECRET`, `ENCRYPTION_KEY`, `APP_ORIGIN`, and your inference settings,
+then use the Docker Compose app profile. The [deployment guide](docs/self-hosting.md) covers
+container networking, optional Ollama hosting, backups, and migration of existing Cloud data.
 
 For databases on private networks, see [operator-authorized private data sources](docs/private-data-sources.md).
 
@@ -108,14 +107,14 @@ For databases on private networks, see [operator-authorized private data sources
 
 1. **Connect** your databases and tools. Credentials are encrypted and stay on your server.
 2. **Ask** a question. The Build agent explores your sources and plans the dashboard.
-3. **Get a dashboard.** The OpenUI Dashboards API builds it, and it queries your sources live
+3. **Get a dashboard.** Your model generates it, and it queries your sources live
    through your server every time it opens.
 4. **Refine** it by chatting. Change one chart, add a filter, or start a new dashboard in the
    same app.
 
-The data behind each answer goes to the OpenUI Dashboards API, which runs on OpenUI Cloud and
-stores your dashboards and chats. Configure the API, models and BYOK at
-[console.thesys.dev](https://console.thesys.dev).
+Model requests go directly to your configured inference endpoint. Dashboard programs, versions,
+and chat history stay in your Postgres. Filters and refreshes run local queries and isolated
+scripts without model calls. Product telemetry is off unless you configure your own endpoint.
 
 ## License
 

@@ -7,6 +7,7 @@ import {
   pgEnum,
   pgTable,
   primaryKey,
+  serial,
   text,
   timestamp,
   uniqueIndex,
@@ -111,7 +112,7 @@ export const appConnections = pgTable(
   ],
 );
 
-/** A dashboard in an app. Its content and versions live in OpenUI Cloud. */
+/** Dashboard metadata; content lives in dashboard_artifacts and dashboard_versions. */
 export const dashboards = pgTable(
   "dashboards",
   {
@@ -120,11 +121,11 @@ export const dashboards = pgTable(
       .notNull()
       .references(() => apps.id, { onDelete: "cascade" }),
     userId: text("user_id").notNull(),
-    /** OpenUI Cloud's artifact id (art_…). */
+    /** A stable local dashboard id, or a legacy Cloud id awaiting import. */
     artifactId: text("artifact_id").notNull().unique(),
     /**
      * The dashboard's title and one-line description, drawn above it. OpenDashboards
-     * keeps them, not the program in Cloud: the agent sets them when it
+     * keeps them separately from the versioned program: the agent sets them when it
      * creates the dashboard, and only people change them afterwards.
      */
     title: text("title").notNull(),
@@ -136,13 +137,12 @@ export const dashboards = pgTable(
 );
 
 /**
- * Which app each chat thread belongs to. Threads live in OpenUI Cloud, which
- * has no notion of apps, so the app's thread list is read from here.
+ * App-scoped conversations. Their messages live in chat_turns.
  */
 export const appThreads = pgTable(
   "app_threads",
   {
-    /** OpenUI Cloud's conversation id. */
+    /** Server-assigned conversation id. */
     threadId: text("thread_id").primaryKey(),
     appId: uuid("app_id")
       .notNull()
@@ -182,4 +182,29 @@ export const mcpOAuthSignIns = pgTable(
 );
 
 export type DataConnectionRow = typeof dataConnections.$inferSelect;
+/** Immutable versions of dashboard programs, owned and executed by this deployment. */
+export const dashboardArtifacts = pgTable("dashboard_artifacts", {
+  id: text("id").primaryKey(),
+  appId: uuid("app_id").notNull().references(() => apps.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  version: integer("version").notNull().default(1),
+});
+
+export const dashboardVersions = pgTable("dashboard_versions", {
+  artifactId: text("artifact_id").notNull().references(() => dashboardArtifacts.id, { onDelete: "cascade" }),
+  version: integer("version").notNull(),
+  program: text("program").notNull(),
+  scripts: jsonb("scripts").$type<Record<string, string>>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [primaryKey({ columns: [table.artifactId, table.version] })]);
+
+/** New turns only, in provider format. */
+export const chatTurns = pgTable("chat_turns", {
+  sequence: serial("sequence").notNull(),
+  id: uuid("id").primaryKey().defaultRandom(),
+  threadId: text("thread_id").notNull().references(() => appThreads.threadId, { onDelete: "cascade" }),
+  runId: text("run_id").notNull(),
+  messages: jsonb("messages").$type<import("openai/resources/chat/completions").ChatCompletionMessageParam[]>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [uniqueIndex("chat_turns_thread_run_idx").on(table.threadId, table.runId)]);
 export type ConnectionStatus = (typeof connectionStatusEnum.enumValues)[number];

@@ -1,11 +1,11 @@
-import { OpenUIApiError, ToolExecutionError } from "@openuidev/server";
+import { DashboardError } from "@/lib/dashboards/errors";
 import { z } from "zod";
 
 import { track } from "@/lib/analytics";
 import { getDashboardService, getDashboards } from "@/lib/dashboards";
 import { SIGN_IN_LOST_HEADER } from "@/lib/dashboards/sign-in-lost";
 import { HttpError, readJson, route } from "@/lib/http";
-import { addLogContext, logError } from "@/lib/log";
+import { addLogContext } from "@/lib/log";
 
 const requestSchema = z.object({
   name: z.string().min(1).max(200),
@@ -40,7 +40,7 @@ export const POST = route(async (request, user) => {
     const result = await getDashboards().interpreter.execute(parsed.data, context, { signal: request.signal, timeoutMs: TIMEOUT_MS });
     return Response.json({ result }, { headers: headers() });
   } catch (error) {
-    if (error instanceof ToolExecutionError) {
+    if (error instanceof DashboardError) {
       track(user.id, "dashboard_query_failed", {
         app_id: dashboard.appId,
         dashboard_id: parsed.data.id,
@@ -48,10 +48,6 @@ export const POST = route(async (request, user) => {
         error_code: error.code,
       });
       return Response.json({ error: { code: error.code, message: error.message } }, { status: error.status ?? 400, headers: headers() });
-    }
-    if (error instanceof OpenUIApiError) {
-      logError("interpreter", error);
-      return Response.json({ error: { code: "openui_error", message: error.message } }, { status: 502 });
     }
     throw error;
   }
