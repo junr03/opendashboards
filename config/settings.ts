@@ -53,13 +53,13 @@ export type DemoData = {
 
 /** The same in every environment. */
 export type CommonSettings = {
-  openui: {
-    /** OpenUI Cloud's API: artifacts, conversations, frontend tokens. */
-    apiUrl: string;
-    /** OpenUI Gateway, for the Build agent's model calls. */
-    gatewayUrl: string;
+  inference: {
+    /** Operator-controlled OpenAI-compatible inference endpoint. Never chosen by application users. */
+    baseUrl: string;
     /** The model that runs the Build agent and builds dashboards. */
     model: string;
+    dashboardModel: string;
+    timeoutMs: number;
     /** Model rounds per Build turn, tool calls included. */
     maxAgentRounds: number;
   };

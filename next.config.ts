@@ -4,6 +4,8 @@ import { PHASE_DEVELOPMENT_SERVER, PHASE_PRODUCTION_SERVER } from "next/constant
 import { config, validateConfig } from "./config";
 
 const baseConfig: NextConfig = {
+  // QuickJS loads its bundled WASM files from disk. Preserve Node package resolution.
+  serverExternalPackages: ["quickjs-emscripten"],
   logging: {
     // Dev logs every Server Function's arguments, and connection actions
     // receive API keys. Never print them.

@@ -3,10 +3,6 @@ import "server-only";
 import { waitUntil } from "@vercel/functions";
 import { PostHog } from "posthog-node";
 
-// The same PostHog project and proxy as openui.com.
-const POSTHOG_KEY = "phc_3OLW53x09ZTVZSV6BEpj5uycj3ooqR6KOemOjx04e3D";
-const POSTHOG_HOST = "https://dgoeivjus9jfp.cloudfront.net";
-
 let client: PostHog | undefined;
 
 /**
@@ -15,8 +11,10 @@ let client: PostHog | undefined;
  */
 export function track(userId: string, event: string, properties: Record<string, unknown> = {}): void {
   const environment = process.env.VERCEL_ENV;
-  if (!environment) return;
-  client ??= new PostHog(POSTHOG_KEY, { host: POSTHOG_HOST });
+  const key = process.env.POSTHOG_KEY;
+  const host = process.env.POSTHOG_HOST;
+  if (!key || !host) return;
+  client ??= new PostHog(key, { host });
   // Sent before the function is frozen; a failure never reaches the user.
   waitUntil(
     client

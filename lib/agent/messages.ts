@@ -52,6 +52,7 @@ const contextEntry = z.object({ description: z.string().max(200), value: z.strin
 export const chatBodySchema = z
   .object({
     threadId: threadIdSchema,
+    runId: z.string().min(1).max(128).optional(),
     context: z.array(contextEntry).max(10).optional(),
     messages: z
       .array(message)

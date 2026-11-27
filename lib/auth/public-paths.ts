@@ -5,6 +5,8 @@
  */
 const PUBLIC_PATHS: ReadonlySet<string> = new Set([
   "/",
+  "/login",
+  "/auth/login",
   "/icon.svg",
   "/shiro-logo.svg",
   "/robots.txt",

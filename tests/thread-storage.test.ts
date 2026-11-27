@@ -1,78 +1,43 @@
-import type { ChatStorage, Thread } from "@openuidev/react-headless";
 import { describe, expect, it, vi } from "vitest";
-
-import { scopeStorageToApp } from "@/lib/apps/thread-storage";
+import { localThreadStorage } from "@/lib/apps/thread-storage";
 
 const APP = "11111111-1111-4111-8111-111111111111";
-const created: Thread = { id: "conv_1", title: "Hello", createdAt: "2026-11-06T00:00:00.000Z" };
+const created = { id: "chat_1", title: "Hello", createdAt: "2026-11-27T00:00:00.000Z" };
 
-function fakeCloud() {
-  return {
-    thread: {
-      listThreads: vi.fn(async () => ({ threads: [created] })),
-      createThread: vi.fn(async () => created),
-      getMessages: vi.fn(async () => []),
-      updateThread: vi.fn(async (thread: Thread) => thread),
-      deleteThread: vi.fn(async () => {}),
-    },
-  } satisfies ChatStorage;
-}
-
-function fakeFetch(status = 200, body: unknown = {}) {
-  return vi.fn<typeof fetch>(async () =>
-    status === 204 ? new Response(null, { status }) : Response.json(body, { status }),
-  );
-}
-
-describe("scopeStorageToApp", () => {
-  it("lists threads from OpenDashboards, not from Cloud's flat list", async () => {
-    const cloud = fakeCloud();
-    const fetchImpl = fakeFetch(200, { threads: [], nextCursor: "abc" });
-    const storage = scopeStorageToApp(cloud, APP, { fetch: fetchImpl });
-
-    expect(await storage.thread.listThreads("c1")).toEqual({ threads: [], nextCursor: "abc" });
-    expect(fetchImpl.mock.calls[0][0]).toBe(`/api/apps/${APP}/threads?cursor=c1`);
-    expect(cloud.thread.listThreads).not.toHaveBeenCalled();
-  });
-
-  it("creates in Cloud, then registers the thread with the app", async () => {
-    const cloud = fakeCloud();
-    const fetchImpl = fakeFetch(200, created);
-    const storage = scopeStorageToApp(cloud, APP, { fetch: fetchImpl });
-
-    expect(await storage.thread.createThread({ id: "m1", role: "user", content: "Hi" })).toEqual(created);
-    const [url, init] = fetchImpl.mock.calls[0];
-    expect(url).toBe(`/api/apps/${APP}/threads`);
-    expect(init?.method).toBe("POST");
-    expect(JSON.parse(String(init?.body))).toEqual({ threadId: "conv_1", title: "Hello" });
-  });
-
-  it("deletes the Cloud thread when registering fails", async () => {
-    const cloud = fakeCloud();
-    const storage = scopeStorageToApp(cloud, APP, {
-      fetch: fakeFetch(409, { error: { message: "This conversation belongs to another app." } }),
+describe("local chat storage", () => {
+  it("creates, lists, renames and deletes through the app's routes", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async (_url, init) => {
+      if (init?.method === "POST") return Response.json(created);
+      if (init?.method) return new Response(null, { status: 204 });
+      return Response.json({ threads: [created], nextCursor: "next" });
     });
-
-    await expect(storage.thread.createThread({ id: "m1", role: "user", content: "Hi" })).rejects.toThrow(
-      "This conversation belongs to another app.",
-    );
-    expect(cloud.thread.deleteThread).toHaveBeenCalledWith("conv_1");
+    const storage = localThreadStorage(APP, { fetch: fetchImpl }).thread;
+    expect(await storage.createThread({ id: "m1", role: "user", content: "Hello" })).toEqual(created);
+    expect(await storage.listThreads("a/b")).toMatchObject({ threads: [created] });
+    await storage.updateThread({ ...created, title: "Renamed" });
+    await storage.deleteThread(created.id);
+    expect(fetchImpl.mock.calls.map(([url, init]) => [url, init?.method])).toEqual([
+      [`/api/apps/${APP}/threads`, "POST"], [`/api/apps/${APP}/threads?cursor=a%2Fb`, undefined],
+      [`/api/apps/${APP}/threads/chat_1`, "PATCH"], [`/api/apps/${APP}/threads/chat_1`, "DELETE"],
+    ]);
   });
 
-  it("keeps renames and deletes in step, and reads messages from Cloud", async () => {
-    const cloud = fakeCloud();
-    const fetchImpl = fakeFetch(204);
-    const storage = scopeStorageToApp(cloud, APP, { fetch: fetchImpl });
+  it("restores tool activity and Markdown from locally stored provider messages", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => Response.json({ messages: [
+      { role: "user", content: "Revenue?" },
+      { role: "assistant", content: null, tool_calls: [{ id: "call1", type: "function", function: { name: "postgres_query", arguments: "{}" } }] },
+      { role: "tool", tool_call_id: "call1", content: '{"rows":[]}' },
+      { role: "assistant", content: "Done." },
+    ] }));
+    const messages = await localThreadStorage(APP, { fetch: fetchImpl }).thread.getMessages("chat_1");
+    expect(messages.map((message) => message.role)).toEqual(["user", "assistant", "tool", "assistant"]);
+    expect(messages[1]).toMatchObject({ toolCalls: [{ id: "call1" }] });
+    expect(messages[2]).toMatchObject({ toolCallId: "call1" });
+    expect(messages[3].content).toBe("Done.");
+  });
 
-    await storage.thread.updateThread({ ...created, title: "Renamed" });
-    await storage.thread.deleteThread("conv_1");
-    await storage.thread.getMessages("conv_1");
-
-    expect(fetchImpl.mock.calls.map(([url, init]) => [url, init?.method])).toEqual([
-      [`/api/apps/${APP}/threads/conv_1`, "PATCH"],
-      [`/api/apps/${APP}/threads/conv_1`, "DELETE"],
-    ]);
-    expect(cloud.thread.deleteThread).toHaveBeenCalledWith("conv_1");
-    expect(cloud.thread.getMessages).toHaveBeenCalledWith("conv_1");
+  it("surfaces authentication and storage failures", async () => {
+    const storage = localThreadStorage(APP, { fetch: async () => Response.json({ error: "Unauthorized" }, { status: 401 }) });
+    await expect(storage.thread.listThreads()).rejects.toThrow("Unauthorized");
   });
 });

@@ -50,13 +50,33 @@ export async function readJson(request: Request, { maxBytes = MAX_JSON_BYTES } =
   if (!request.headers.get("content-type")?.toLowerCase().startsWith("application/json")) {
     throw new HttpError(415, "Expected application/json");
   }
-  const text = await request.text();
-  if (Buffer.byteLength(text) > maxBytes) throw new HttpError(413, "Request body too large");
+  const text = await readText(request, maxBytes);
   try {
     return JSON.parse(text);
   } catch {
     throw new HttpError(400, "Invalid JSON");
   }
+}
+
+/** Bounds streamed bodies before buffering, including public login requests. */
+export async function readText(request: Request, maxBytes: number): Promise<string> {
+  const reader = request.body?.getReader();
+  if (!reader) return "";
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > maxBytes) {
+        await reader.cancel();
+        throw new HttpError(413, "Request body too large");
+      }
+      chunks.push(value);
+    }
+    return Buffer.concat(chunks).toString("utf8");
+  } finally { reader.releaseLock(); }
 }
 
 /** Turns a service result into a response: data as JSON, or the error with its status. */
@@ -67,7 +87,7 @@ export function respond<T>(result: AppResult<T>, { emptyOk = false } = {}): Resp
   return Response.json({ error: result.error }, { status: STATUS[result.error.code] });
 }
 
-function assertSameOrigin(request: Request) {
+export function assertSameOrigin(request: Request) {
   const origin = request.headers.get("origin");
   if (!origin) throw new HttpError(403, "Missing Origin");
   const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");

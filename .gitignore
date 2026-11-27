@@ -43,3 +43,8 @@ next-env.d.ts
 
 # generated from @openuidev/dashboard-library by `pnpm dashboard:spec`
 /lib/dashboards/generated/
+
+# Private exports and browser verification artifacts
+/.backups/
+/test-results/
+/playwright-report/

@@ -8,7 +8,6 @@ import {
   type MarkDownRendererProps,
   ThemeProvider,
   ToolCallTimeline,
-  useOpenuiCloudStorage,
   useThread,
   useThreadList,
   useToolActivities,
@@ -44,12 +43,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { dashboardPath, parseAppPath } from "@/lib/apps/paths";
 import { usePublishDashboardResponse, useSetCreatingDashboard } from "./app-workspace";
-import { scopeStorageToApp } from "@/lib/apps/thread-storage";
+import { localThreadStorage } from "@/lib/apps/thread-storage";
 import { cn } from "@/lib/utils";
 
 type Dashboard = { id: string; artifactId: string };
 
-/** The dashboard a create/edit response is for, read as Cloud writes it. */
+/** The dashboard a create/edit response is for, read from the local tool response. */
 function artifactIdOf(response: string): string | null {
   const id = parseMessage(response).attributes.artifact_id;
   return typeof id === "string" ? id : null;
@@ -60,10 +59,10 @@ const markdownOptions: MarkDownRendererProps["options"] = { remarkPlugins: [[rem
 type AssistantMessage = Extract<Message, { role: "assistant" }>;
 
 /**
- * The Build panel: a slim chat over the app's own threads in OpenUI Cloud.
+ * The Build panel: a slim chat over the app's own threads in Postgres.
  *
  * Chat state, streaming and storage are react-headless's (`ChatProvider`,
- * `agUIAdapter`, `useOpenuiCloudStorage`); the "Working / Behind the scenes"
+ * `agUIAdapter`, local storage); the "Working / Behind the scenes"
  * timeline and Markdown are react-ui's own components. OpenDashboards only lays them
  * out for a narrow panel, the way Agent Interface lays them out full screen.
  */
@@ -79,8 +78,7 @@ export function BuildChat({
   // Taken once: sending the first prompt refreshes the page, which turns
   // hasPendingPrompt off mid-send, and reopening a thread then would abort it.
   const [startedWithPrompt] = useState(hasPendingPrompt);
-  const cloud = useOpenuiCloudStorage({ token: "/api/frontend-token" });
-  const storage = useMemo(() => scopeStorageToApp(cloud, appId), [cloud, appId]);
+  const storage = useMemo(() => localThreadStorage(appId), [appId]);
   // The dashboard on screen: the one in the URL, or the app's first on its home.
   const pathname = usePathname();
   const { dashboardId } = parseAppPath(pathname);
@@ -478,7 +476,7 @@ function TurnEffects({
     });
   }, [appId, hasPendingPrompt, processMessage, router]);
 
-  // Cloud's create/edit responses go to the dashboard they're for as they
+  // Local create/edit responses go to the dashboard they're for as they
   // arrive, so an open dashboard follows the edit; a new one opens to be watched.
   // While a create call runs, the workspace shows the new dashboard pending.
   const messages = useThread((s) => s.messages);

@@ -18,7 +18,7 @@ const WAYS: {
     Icon: Server,
     name: "Self-host",
     line: "The open-source app, on your servers.",
-    points: ["Built on the OpenUI Dashboards API", "Any model, or bring your own key", "Credentials stay on your servers"],
+    points: ["Your own model endpoint", "Dashboards and chats in your database", "Credentials stay on your servers"],
     cta: { label: "Deploy", href: LINKS.github, external: true },
     primary: true,
   },
@@ -27,23 +27,23 @@ const WAYS: {
     Icon: ShieldCheck,
     name: "Private deployment",
     line: "Everything inside your network.",
-    points: ["OpenUI Cloud inside your network", "Complete isolation for your data", "Set up with our team"],
-    cta: { label: "Talk to sales", href: LINKS.sales, external: true },
+    points: ["Host inference inside your network", "Local dashboard execution", "No Gateway account required"],
+    cta: { label: "Deployment guide", href: LINKS.docs, external: true },
   },
   {
     id: "cloud",
     Icon: Cloud,
-    name: "Cloud",
-    line: "Hosted by us at opendashboards.com.",
-    points: ["Nothing to install", "Sign up and connect your tools", "Dashboards and chats saved for you"],
-    cta: { label: "Try for free", href: LINKS.app },
+    name: "This deployment",
+    line: "Use the server you are visiting.",
+    points: ["Sign in with your operator account", "Connect your data sources", "Build live dashboards"],
+    cta: { label: "Open dashboards", href: LINKS.app },
   },
 ];
 
 /**
  * "Three ways to use it", on a grey band: columns split by hairlines (rows
  * below 900px), no cards, each ending in its button. A line for builders
- * under them points at the Thesys console for an API key.
+ * under them points at the deployment guide.
  */
 export function Ways() {
   return (
@@ -53,8 +53,8 @@ export function Ways() {
     >
       <SectionHeader
         id="ways-title"
-        title="Three ways to use it."
-        subtitle="Run it yourself, keep it fully private, or let us host it."
+        title="Run it your way."
+        subtitle="Choose your infrastructure and keep control of your data."
       />
 
       <div className="mx-auto mt-[clamp(3rem,5vw,4.5rem)] grid max-w-140 grid-cols-1 px-(--gutter) min-[56.25rem]:max-w-300 min-[56.25rem]:grid-cols-3">
@@ -99,14 +99,14 @@ export function Ways() {
       </div>
 
       <p className="mx-auto mt-[clamp(2.5rem,4vw,3.5rem)] max-w-300 px-(--gutter) text-center text-[15px] leading-normal text-pretty text-neutral-950/60">
-        Building your own product? Embed the OpenUI Dashboards API.{" "}
+        Run inference, storage and dashboard execution in your own environment.{" "}
         <a
-          href={LINKS.console}
+          href={LINKS.docs}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-baseline gap-[0.2em] rounded-[3px] text-neutral-950 transition-opacity duration-160 hover:opacity-70 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-current motion-reduce:transition-none"
         >
-          Get API
+          Read the guide
           <ArrowUpRight aria-hidden className="relative top-[0.08em] size-[0.8em] shrink-0" strokeWidth={2.5} />
         </a>
       </p>

@@ -1,46 +1,31 @@
 const FAQS = [
   {
-    question: "How is it different from Claude Dashboards?",
-    answer: [
-      "Claude Dashboards only work inside Claude, with Claude models, on Anthropic’s cloud.",
-      "OpenDashboards is open source: connect your own databases and tools, use any model, and run it hosted at opendashboards.com or on your own servers.",
-    ],
+    question: "What runs in this deployment?",
+    answer: ["Your server generates and stores dashboards and chats, queries your connected data sources, and runs dashboard calculations. Model requests go directly to your configured inference server."],
   },
   {
     question: "Is OpenDashboards open source?",
-    answer: ["Yes. The app is open source. It builds dashboards with the OpenUI Dashboards API, which runs on OpenUI Cloud."],
+    answer: ["Yes. This fork and its OpenUI language, renderer, and dashboard components are MIT licensed."],
   },
   {
-    question: "Why do I need a Thesys API key?",
-    answer: [
-      "The key is for the OpenUI Dashboards API, which builds, stores and updates your dashboards. Create one and set up the API at console.thesys.dev.",
-      "OpenUI Cloud has a generous free tier.",
-    ],
+    question: "Do I need a Thesys API key?",
+    answer: ["No. This deployment runs independently of OpenUI Cloud and Gateway."],
   },
   {
     question: "Which models can I use?",
-    answer: [
-      "Any model the OpenUI Dashboards API supports.",
-      "It also supports BYOK: add your own OpenAI or Anthropic key at console.thesys.dev and your calls run on it.",
-    ],
+    answer: ["Use your own OpenAI-compatible inference server, such as Ollama or vLLM. Choose a model with tool calling and enough context for your dashboards and conversations."],
   },
   {
     question: "What can I connect?",
-    answer: [
-      "Postgres, MySQL, ClickHouse, BigQuery, PostHog, Google Analytics and Search Console are built in.",
-      "Anything else, like Stripe or HubSpot, connects through an MCP server.",
-    ],
+    answer: ["Postgres, MySQL, ClickHouse, BigQuery, PostHog, Google Analytics and Search Console are built in. Other services connect through an MCP server."],
   },
   {
-    question: "Can I use it without hosting anything?",
-    answer: ["Yes. Use the hosted version at opendashboards.com, or self-host the app in your own environment."],
+    question: "Who can sign in?",
+    answer: ["The standalone deployment supports an operator account configured by the person hosting it. Sign in with that deployment’s password."],
   },
   {
-    question: "Does my data leave my servers if I self-host?",
-    answer: [
-      "Your credentials stay on your server, and queries run from it. The data behind each answer goes to the OpenUI Dashboards API on OpenUI Cloud, where your dashboards and chats are stored.",
-      "For complete isolation, OpenUI Cloud can be privately hosted inside your network.",
-    ],
+    question: "Where does my data go?",
+    answer: ["Credentials, dashboards and chats stay in this deployment. Queries run from your server. The model receives the context needed to answer your question at the inference endpoint you configure."],
   },
 ];
 

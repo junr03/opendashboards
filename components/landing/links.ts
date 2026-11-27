@@ -1,11 +1,8 @@
-/** Where the landing page points. */
+/** Where this independent fork's landing page points. */
 export const LINKS = {
-  github: "https://github.com/thesysdev/opendashboards",
+  github: "https://github.com/junr03/opendashboards",
   app: "/apps",
-  dashboards: "https://www.openui.com/dashboards",
-  openui: "https://www.openui.com",
-  /* Where you create a Thesys API key and set up the OpenUI Dashboards API. */
-  console: "https://console.thesys.dev",
-  /* Private deployments of OpenUI Cloud are set up with our team. */
-  sales: "https://zcal.co/t/thesys/demo",
+  dashboards: "https://github.com/thesysdev/openui/tree/main/packages/libraries/dashboard",
+  openui: "https://github.com/thesysdev/openui",
+  docs: "https://github.com/junr03/opendashboards/blob/main/docs/self-hosting.md",
 } as const;

@@ -1,6 +1,7 @@
 import { config, secrets, type Environment } from "@/config";
 
 import { createKmsSecretBox } from "./kms";
+import { createAesSecretBox } from "./aes";
 import { plaintextSecretBox } from "./plaintext";
 import { SecretStorageNotConfiguredError, type SecretBox, type SecretProvider } from "./types";
 
@@ -11,12 +12,13 @@ export type SecretSettings = {
   environment: Environment;
   kmsKeyId: string | undefined;
   kmsRoleArn?: string;
+  encryptionKey?: string;
   allowPlaintext: boolean;
 };
 
 const current = (): SecretSettings => {
   const { env, secrets: settings } = config();
-  return { environment: env, kmsKeyId: secrets.kmsKeyId(), kmsRoleArn: secrets.kmsRoleArn(), allowPlaintext: settings.allowPlaintext };
+  return { environment: env, kmsKeyId: secrets.kmsKeyId(), kmsRoleArn: secrets.kmsRoleArn(), encryptionKey: secrets.encryptionKey(), allowPlaintext: settings.allowPlaintext };
 };
 
 /** Plaintext is allowed only where the settings allow it and only locally, whatever a settings file says. */
@@ -28,6 +30,7 @@ const plaintextAllowed = (settings: SecretSettings) => settings.allowPlaintext &
  * KMS throws: secrets are never stored unencrypted there.
  */
 export function getSecretBox(settings: SecretSettings = current()): SecretBox {
+  if (settings.encryptionKey) return createAesSecretBox(settings.encryptionKey);
   if (settings.kmsKeyId && settings.kmsRoleArn) return createKmsSecretBox(settings.kmsKeyId, { roleArn: settings.kmsRoleArn });
   if (!plaintextAllowed(settings)) throw new SecretStorageNotConfiguredError();
   warnPlaintextOnce();
@@ -36,6 +39,7 @@ export function getSecretBox(settings: SecretSettings = current()): SecretBox {
 
 /** For the UI: which provider is in use, without throwing. */
 export function getSecretMode(settings: SecretSettings = current()): SecretProvider | "unconfigured" {
+  if (settings.encryptionKey) return "aes-gcm";
   if (settings.kmsKeyId && settings.kmsRoleArn) return "kms";
   return plaintextAllowed(settings) ? "plaintext" : "unconfigured";
 }

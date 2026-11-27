@@ -3,6 +3,7 @@ import { config, secrets, type Environment } from "@/config";
 import type { AuthProvider, AuthUser } from "./provider";
 import { devProvider } from "./providers/dev";
 import { supabaseProvider } from "./providers/supabase";
+import { operatorUser, sessionProvider } from "./providers/session";
 
 /**
  * Picks the provider that decides who requests are for. Framework-free so both
@@ -24,6 +25,7 @@ export type AuthSettings = {
   environment: Environment;
   devUser: AuthUser | null;
   supabaseUrl: string | undefined;
+  authSecret?: string;
 };
 
 const currentAuthSettings = (): AuthSettings => {
@@ -32,12 +34,13 @@ const currentAuthSettings = (): AuthSettings => {
     environment: env,
     devUser: auth.devUser,
     supabaseUrl: secrets.supabaseUrl(),
+    authSecret: secrets.authSecret(),
   };
 };
 
 /**
- * Fails closed: outside local there is never a dev user, so Supabase is
- * required and nothing runs unauthenticated. Locally, setting SUPABASE_URL
+ * Fails closed: outside local there is never a dev user, so Supabase
+ * or standalone sessions are required. Locally, configuring either provider
  * turns the check on.
  *
  * Startup validation already refuses these cases; this refuses them again in
@@ -48,7 +51,8 @@ export function getAuthProvider(settings: AuthSettings = currentAuthSettings()):
     throw new AuthConfigError(`${settings.environment} can't have a dev user; only local may skip the gateway`);
   }
   if (settings.supabaseUrl) return supabaseProvider(settings.supabaseUrl);
-  if (settings.devUser === null) throw new AuthConfigError("SUPABASE_URL must be set outside local");
+  if (settings.authSecret) return sessionProvider(settings.authSecret, operatorUser());
+  if (settings.devUser === null) throw new AuthConfigError("Configure AUTH_SECRET and AUTH_PASSWORD, or SUPABASE_URL, outside local");
   if (!settings.devUser.id) throw new AuthConfigError("auth.devUser.id is empty");
   if (!settings.devUser.email) throw new AuthConfigError("auth.devUser.email is empty");
   return devProvider(settings.devUser);

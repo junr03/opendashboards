@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getAuthProvider, type AuthProvider } from "@/lib/auth";
 import { isPublicPath } from "@/lib/auth/public-paths";
 import { count } from "@/lib/metrics";
+import { secrets } from "@/config";
 
 /**
  * Rejects every request the auth provider doesn't recognize, before any page,
@@ -26,6 +27,9 @@ export async function proxy(request: NextRequest) {
     // Counted only here: requireUser() re-checks every request that passes.
     count("opendashboards.auth.rejected", { reason: result.reason });
     if (result.reason === "unavailable") return new NextResponse("Service unavailable", { status: 503 });
+    if (secrets.authSecret() && !request.nextUrl.pathname.startsWith("/api/") && request.method === "GET") {
+      return NextResponse.redirect(new URL("/login", request.url));
+    }
     return new NextResponse("Unauthorized", { status: 401 });
   }
   return NextResponse.next();

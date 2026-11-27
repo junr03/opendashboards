@@ -1,10 +1,9 @@
 import "server-only";
 
-import OpenAI from "openai";
 import type { RunnableToolFunctionWithContext } from "openai/lib/RunnableFunction";
 import { z } from "zod";
 
-import { config, secrets } from "@/config";
+import { config } from "@/config";
 import {
   artifactOf,
   deleteDashboard,
@@ -18,32 +17,24 @@ import spec from "@/lib/dashboards/generated/dashboard.spec.json";
 import { ToolError, toolsFor, type ToolContext } from "@/lib/tools";
 
 /**
- * The Build agent: a plain tool loop over OpenUI Gateway. It explores the
+ * The Build agent: a plain tool loop over the configured inference endpoint. It explores the
  * app's data with every source's agent tools, then creates and edits live
- * dashboards in OpenUI Cloud. The chat itself is Markdown.
+ * dashboards in OpenDashboards. The chat itself is Markdown.
  */
 
 
 
 /** Model rounds per turn, tool calls included. */
-export const maxRounds = () => config().openui.maxAgentRounds;
+export const maxRounds = () => config().inference.maxAgentRounds;
 
 /** The model that runs the Build agent. */
-export const model = () => config().openui.model;
+export const model = () => config().inference.model;
 
 export const SYSTEM_PROMPT = `You are OpenDashboards' dashboard builder. The user is building an app: a set of live dashboards over their own data.
 
 - Explore before you build: find the user's connections with list_connections, look at what data exists, and run queries to check that the numbers you plan to show are real and sensible.
 - Build with create_dashboard. To explain or change an existing dashboard, read it first with read_dashboard (find it with list_dashboards), then use edit_dashboard; delete one with delete_dashboard only when the user asks. Describe in the prompt what to show and exactly which tool calls and queries load each part, with the connection id. Dashboards load their data live every time they open.
 - Reply in short Markdown. Say what you built and what it shows. Don't paste query results or code unless asked.`;
-
-let gateway: OpenAI | undefined;
-
-/** OpenUI Gateway, as configured: its URL and the THESYS_API_KEY secret. */
-export function getGateway(): OpenAI {
-  gateway ??= new OpenAI({ baseURL: config().openui.gatewayUrl, apiKey: secrets.thesysApiKey() });
-  return gateway;
-}
 
 /** What one turn did, for the route to act on afterwards. */
 export type TurnContext = ToolContext & { signal: AbortSignal; dashboards: string[] };
@@ -129,9 +120,7 @@ const readDashboardTool = define(
     const args = parseArgs(readArgs, input);
     const result = await readDashboard(turn.userId, turn.appId, args.dashboard);
     if (!result.ok) {
-      throw result.reason === "not_found"
-        ? new ToolError("dashboard_not_found", `No dashboard ${args.dashboard} in this app.`)
-        : new ToolError("cloud_failed", "OpenUI Cloud couldn't read the dashboard. Try again.");
+      throw new ToolError("dashboard_not_found", `No local content for dashboard ${args.dashboard} in this app. Legacy dashboards need importing first.`);
     }
     const truncated = result.program.length > MAX_PROGRAM_CHARS;
     return {
@@ -139,6 +128,7 @@ const readDashboardTool = define(
       title: result.title,
       description: result.description,
       program: truncated ? result.program.slice(0, MAX_PROGRAM_CHARS) : result.program,
+      scripts: result.scripts,
       ...(truncated ? { truncated: true } : {}),
       // What each component it uses draws, e.g. that GeoMap is a map with a ranked list.
       components: componentsUsed(result.program),
@@ -212,9 +202,7 @@ const deleteDashboardTool = define(
     const args = parseArgs(deleteArgs, input);
     const result = await deleteDashboard(turn.userId, turn.appId, args.dashboard);
     if (!result.ok) {
-      throw result.reason === "not_found"
-        ? new ToolError("dashboard_not_found", `No dashboard ${args.dashboard} in this app.`)
-        : new ToolError("cloud_failed", "OpenUI Cloud couldn't delete the dashboard. Try again.");
+      throw new ToolError("dashboard_not_found", `No dashboard ${args.dashboard} in this app.`);
     }
     return { deleted: args.dashboard };
   },
@@ -222,7 +210,7 @@ const deleteDashboardTool = define(
 
 /**
  * Records a new dashboard against the app with its title and description,
- * then returns OpenUI Cloud's response unchanged as the tool result: it names
+ * then returns The dashboard service's response unchanged as the tool result: it names
  * the dashboard (its `artifact_id`) for the model, and the Build chat hands
  * it to the open dashboard's renderer, which follows the new version as it's
  * built. An edit records nothing: the dashboard keeps its title.
@@ -234,8 +222,8 @@ async function remember(
 ) {
   const artifact = artifactOf(response);
   if (!artifact) {
-    logError("agent.dashboard", new Error("OpenUI Cloud's response names no artifact"));
-    throw new ToolError("no_artifact", "OpenUI Cloud didn't return a dashboard.");
+    logError("agent.dashboard", new Error("The dashboard service's response names no artifact"));
+    throw new ToolError("no_artifact", "OpenDashboards didn't return a dashboard.");
   }
   if (created) {
     const recorded = await getDashboardService().record(turn.userId, turn.appId, { artifactId: artifact.id, ...created });

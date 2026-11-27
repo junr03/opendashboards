@@ -21,6 +21,7 @@ export type SecretContext = {
  * (AES-256-GCM), and only the KMS-encrypted data key is stored with it.
  */
 export type SealedSecret =
+  | { v: 1; provider: "aes-gcm"; iv: string; ciphertext: string }
   | { v: 1; provider: "plaintext"; value: string }
   | { v: 1; provider: "kms"; keyId: string; ciphertext: string }
   | { v: 2; provider: "kms"; keyId: string; dataKey: string; iv: string; ciphertext: string }
@@ -81,7 +82,7 @@ export class SecretUnreadableError extends Error {
 /** Production has no usable secret storage configured. */
 export class SecretStorageNotConfiguredError extends Error {
   constructor() {
-    super("Secret storage isn't configured: set KMS_KEY_ID");
+    super("Secret storage isn't configured: set ENCRYPTION_KEY or configure KMS");
     this.name = "SecretStorageNotConfiguredError";
   }
 }

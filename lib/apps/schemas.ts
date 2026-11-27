@@ -14,7 +14,7 @@ export const promptSchema = z
   .min(1, "Describe what you want to build.")
   .max(4000, "Keep the prompt under 4,000 characters.");
 
-/** OpenUI Cloud conversation ids. Anything else is refused before it reaches the database. */
+/** Local and legacy conversation ids. Anything else is refused before it reaches the database. */
 export const threadIdSchema = z.string().regex(/^[A-Za-z0-9_-]{1,128}$/, "Invalid thread id.");
 
 export const threadTitleSchema = z

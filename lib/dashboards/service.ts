@@ -1,12 +1,11 @@
 import { and, asc, count, eq, gt, sql } from "drizzle-orm";
 
 import type { Database } from "@/lib/db";
-import { apps, dashboards } from "@/lib/db/schema";
+import { apps, dashboardArtifacts, dashboards } from "@/lib/db/schema";
 
 /**
- * OpenDashboards' record of dashboards: which app each OpenUI Cloud artifact belongs
- * to. Cloud keeps the dashboard itself; this table gives it an app, a title
- * for the sidebar, and an owner check before its data loads. Every query is
+ * Dashboard metadata: its app, sidebar title, ordering and ownership.
+ * Program versions live in the local artifact store. Every query is
  * scoped to the user.
  */
 export function createDashboardService({ db }: { db: Database }) {
@@ -63,6 +62,7 @@ export function createDashboardService({ db }: { db: Database }) {
           )
           .returning({ position: dashboards.position });
         if (!removed) return false;
+        await tx.delete(dashboardArtifacts).where(and(eq(dashboardArtifacts.id, artifactId), eq(dashboardArtifacts.userId, userId), eq(dashboardArtifacts.appId, appId)));
         await tx
           .update(dashboards)
           .set({ position: sql`${dashboards.position} - 1` })

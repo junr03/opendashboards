@@ -1,6 +1,5 @@
 "use client";
 
-import { OpenUICloudProvider } from "@openuidev/react-ui/cloud";
 import { ChevronLeftIcon, PanelRightCloseIcon, SparklesIcon, XIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -190,9 +189,7 @@ export function AppWorkspace({
   const showCreating = creating !== null && creating.at === pathname;
 
   return (
-    // One Cloud connection for the workspace: the chat and the dashboard
-    // share its token and artifact cache.
-    <OpenUICloudProvider token="/api/frontend-token">
+    // Share completed dashboard responses between the chat and the dashboard view.
     <DashboardResponsesContext value={dashboardResponses}>
     <BuildPanelContext value={buildPanel}>
     <RenameAppContext value={startRename}>
@@ -269,7 +266,6 @@ export function AppWorkspace({
     </RenameAppContext>
     </BuildPanelContext>
     </DashboardResponsesContext>
-    </OpenUICloudProvider>
   );
 }
 

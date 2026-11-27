@@ -1,7 +1,9 @@
-import { and, desc, eq, lt, or } from "drizzle-orm";
+import { and, asc, desc, eq, lt, or } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 
 import type { Database } from "@/lib/db";
-import { appThreads, apps } from "@/lib/db/schema";
+import { appThreads, apps, chatTurns } from "@/lib/db/schema";
 import { logError } from "@/lib/log";
 
 import { fail, fromValidation, internalError, notFound, ok, type AppResult } from "./errors";
@@ -13,9 +15,8 @@ export type AppThread = { id: string; title: string; createdAt: string };
 const PAGE_SIZE = 30;
 
 /**
- * Which app each chat thread belongs to. Threads live in OpenUI Cloud, which
- * has no notion of apps; this mapping is what scopes a thread list to one
- * app. Every call checks the app belongs to the user, and a thread belongs to
+ * Owns conversations and their provider-format turns in Postgres.
+ * Every call checks the app belongs to the user, and a thread belongs to
  * exactly one app.
  */
 export function createThreadService({ db, now = () => new Date() }: { db: Database; now?: () => Date }) {
@@ -46,6 +47,28 @@ export function createThreadService({ db, now = () => new Date() }: { db: Databa
   }
 
   return {
+    async create(userId: string, appId: string, title: string): Promise<AppResult<AppThread>> {
+      return this.register(userId, appId, { threadId: `chat_${randomUUID()}`, title });
+    },
+
+    async messages(userId: string, appId: string, threadId: string): Promise<ChatCompletionMessageParam[] | null> {
+      const rows = await db.select({ messages: chatTurns.messages }).from(chatTurns)
+        .innerJoin(appThreads, eq(appThreads.threadId, chatTurns.threadId))
+        .where(scope(userId, appId, threadId)).orderBy(asc(chatTurns.sequence));
+      if (!rows.length && !(await this.belongsTo(userId, appId, threadId))) return null;
+      return rows.flatMap((row) => row.messages);
+    },
+
+    /** Retrying a turn id is idempotent. Ownership is rechecked inside the transaction. */
+    async append(userId: string, appId: string, threadId: string, runId: string, messages: ChatCompletionMessageParam[]): Promise<void> {
+      await db.transaction(async (tx) => {
+        const [thread] = await tx.select().from(appThreads).where(scope(userId, appId, threadId)).for("update");
+        if (!thread) throw new Error("Thread not found");
+        await tx.insert(chatTurns).values({ threadId, runId, messages }).onConflictDoNothing();
+        await tx.update(appThreads).set({ updatedAt: now() }).where(scope(userId, appId, threadId));
+      });
+    },
+
     /** The app's threads, most recently active first, a page at a time. */
     list(
       userId: string,
@@ -94,7 +117,7 @@ export function createThreadService({ db, now = () => new Date() }: { db: Databa
     },
 
     /**
-     * Records a thread just created in Cloud as belonging to the app.
+     * Registers a server-assigned conversation id for this app.
      * Registering the same thread for the same app again is a no-op; a thread
      * already mapped elsewhere is refused.
      */
@@ -138,7 +161,7 @@ export function createThreadService({ db, now = () => new Date() }: { db: Databa
       });
     },
 
-    /** Removes the mapping. The Cloud conversation is deleted by the caller. */
+    /** Removes the mapping. Stored turns are deleted by the foreign-key cascade. */
     remove(userId: string, appId: string, threadId: string): Promise<AppResult> {
       return guard("remove", async () => {
         if (!threadIdSchema.safeParse(threadId).success) return notFound();

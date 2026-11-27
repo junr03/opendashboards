@@ -38,7 +38,7 @@ export function Features() {
           <br className="md:hidden" /> your servers
         </h2>
         <p className="mx-auto mt-4 max-w-144 text-center text-base leading-normal text-pretty text-neutral-950/60 md:text-[17px]">
-          Run OpenDashboards on your own infrastructure, with any model through the OpenUI Dashboards API.
+          Run OpenDashboards on your own infrastructure, with your own model endpoint, database and dashboard runtime.
         </p>
 
         <div className="mt-10 grid grid-cols-1 gap-10 md:mt-16 md:grid-cols-2 md:gap-x-4 md:gap-y-12 min-[56.25rem]:gap-x-6 min-[56.25rem]:gap-y-16">
