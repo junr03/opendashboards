@@ -13,6 +13,9 @@ import { getDashboardService } from "@/lib/dashboards";
 import { HttpError, readJson, route } from "@/lib/http";
 import { addLogContext, logError } from "@/lib/log";
 import { count } from "@/lib/metrics";
+import { config } from "@/config";
+import { createInferencePerformance } from "@/lib/inference/performance";
+import { PERFORMANCE_EVENT } from "@/lib/inference/measurements";
 
 type Ctx = { params: Promise<{ appId: string }> };
 
@@ -25,6 +28,8 @@ const MAX_BODY_BYTES = 2 * 1024 * 1024;
  * saved to the local conversation.
  */
 export const POST = route<Ctx>(async (request, user, { params }) => {
+  const startedAt = Date.now();
+  const profiling = createInferencePerformance(config().inference.performanceMetrics, request.signal);
   const { appId } = await params;
   addLogContext({ app: appId });
   const parsed = chatBodySchema.safeParse(await readJson(request, { maxBytes: MAX_BODY_BYTES }));
@@ -61,7 +66,6 @@ export const POST = route<Ctx>(async (request, user, { params }) => {
   const encoder = new TextEncoder();
   const turn: TurnContext = { userId: user.id, appId, signal: request.signal, dashboards: [] };
 
-  const startedAt = Date.now();
   const trackTurn = (outcome: string, cause: string, turnMessages: ChatCompletionMessageParam[]) => {
     const results = turnMessages.filter((message) => message.role === "tool");
     track(user.id, "chat_turn_finished", {
@@ -77,70 +81,80 @@ export const POST = route<Ctx>(async (request, user, { params }) => {
 
   const body = new ReadableStream({
     async start(controller) {
-      const emit = (event: BaseEvent) => controller.enqueue(encoder.encode(sse(event)));
-      const translate = createAgUiTranslator(emit);
-      emit({ type: EventType.RUN_STARTED, threadId, runId } as BaseEvent);
+      return profiling.run(async () => {
+        const emit = (event: BaseEvent) => controller.enqueue(encoder.encode(sse(event)));
+        const emitPerformance = (outcome: "completed" | "failed") => {
+          const report = profiling.finish(outcome);
+          if (report) emit({ type: EventType.CUSTOM, name: PERFORMANCE_EVENT, value: report } as BaseEvent);
+        };
+        const translate = createAgUiTranslator(emit);
+        emit({ type: EventType.RUN_STARTED, threadId, runId } as BaseEvent);
 
-      const runner = getInference().chat.completions.runTools(
-        {
-          model: model(),
-          messages: [...system, ...messages],
-          tools: agentTools(),
-          toolContext: turn,
-          stream: true,
-        },
-        { signal: request.signal, maxChatCompletions: maxRounds() },
-      );
-      runner.on("chunk", (chunk) => translate.chunk(chunk));
-      runner.on("message", (message) => translate.message(message));
+        const runner = getInference().chat.completions.runTools(
+          {
+            model: model(),
+            messages: [...system, ...messages],
+            tools: agentTools(),
+            toolContext: turn,
+            stream: true,
+            ...(config().inference.performanceMetrics ? { stream_options: { include_usage: true } } : {}),
+          },
+          { signal: request.signal, maxChatCompletions: maxRounds() },
+        );
+        runner.on("chunk", (chunk) => translate.chunk(chunk));
+        runner.on("message", (message) => translate.message(message));
 
-      // The new turn: the user's message, then every message the loop added.
-      const newMessages = () => runner.messages.slice(system.length - 1 + messages.length) as ChatCompletionMessageParam[];
+        // The new turn: the user's message, then every message the loop added.
+        const newMessages = () => runner.messages.slice(system.length - 1 + messages.length) as ChatCompletionMessageParam[];
 
-      const save = async (turnMessages: ChatCompletionMessageParam[]) => {
+        const save = async (turnMessages: ChatCompletionMessageParam[]) => {
+          try {
+            await threads.append(user.id, appId, threadId, runId, turnMessages);
+          } catch (error) {
+            logError("chat.save", error);
+          }
+        };
+
         try {
-          await threads.append(user.id, appId, threadId, runId, turnMessages);
+          await runner.done();
+          translate.finish();
+          count("opendashboards.chat.turn", { outcome: "completed", cause: "none" });
         } catch (error) {
-          logError("chat.save", error);
-        }
-      };
-
-      try {
-        await runner.done();
-        translate.finish();
-        emit({ type: EventType.RUN_FINISHED, threadId, runId } as BaseEvent);
-        count("opendashboards.chat.turn", { outcome: "completed", cause: "none" });
-      } catch (error) {
-        if (request.signal.aborted) {
-          count("opendashboards.chat.turn", { outcome: "cancelled", cause: "none" });
-          trackTurn("cancelled", "none", newMessages());
-          // Stopped: saved as far as it got, including the message the model was still
-          // writing, so the chat still has it after a reload. The browser has gone, so
-          // waitUntil keeps the function alive for the save.
-          const writing = runner.currentChatCompletionSnapshot?.choices[0]?.message;
-          const partial: ChatCompletionMessageParam[] =
-            writing?.content || writing?.tool_calls?.length
-              ? [{ role: "assistant", content: writing.content ?? null, tool_calls: writing.tool_calls }]
-              : [];
-          waitUntil(save(answerStoppedCalls([...newMessages(), ...partial])));
+          if (request.signal.aborted) {
+            profiling.finish("cancelled");
+            count("opendashboards.chat.turn", { outcome: "cancelled", cause: "none" });
+            trackTurn("cancelled", "none", newMessages());
+            // Stopped: saved as far as it got, including the message the model was still
+            // writing, so the chat still has it after a reload. The browser has gone, so
+            // waitUntil keeps the function alive for the save.
+            const writing = runner.currentChatCompletionSnapshot?.choices[0]?.message;
+            const partial: ChatCompletionMessageParam[] =
+              writing?.content || writing?.tool_calls?.length
+                ? [{ role: "assistant", content: writing.content ?? null, tool_calls: writing.tool_calls }]
+                : [];
+            waitUntil(save(answerStoppedCalls([...newMessages(), ...partial])));
+            controller.close();
+            return;
+          }
+          logError("chat.turn", error);
+          const failure = turnFailure(error);
+          count("opendashboards.chat.turn", { outcome: "failed", cause: failure.cause });
+          trackTurn("failed", failure.cause, newMessages());
+          translate.finish();
+          emitPerformance("failed");
+          emit({ type: EventType.RUN_ERROR, message: failure.message } as BaseEvent);
           controller.close();
-          return;
+          return; // Failed: save nothing.
         }
-        logError("chat.turn", error);
-        const failure = turnFailure(error);
-        count("opendashboards.chat.turn", { outcome: "failed", cause: failure.cause });
-        trackTurn("failed", failure.cause, newMessages());
-        translate.finish();
-        emit({ type: EventType.RUN_ERROR, message: failure.message } as BaseEvent);
-        controller.close();
-        return; // Failed: save nothing.
-      }
 
-      // Saved before the stream closes: a Vercel Function can stop once its response ends.
-      const turnMessages = newMessages();
-      trackTurn("completed", "none", turnMessages);
-      await save(turnMessages);
-      controller.close();
+        // Saved before the stream closes: a Vercel Function can stop once its response ends.
+        const turnMessages = newMessages();
+        trackTurn("completed", "none", turnMessages);
+        await save(turnMessages);
+        emitPerformance("completed");
+        emit({ type: EventType.RUN_FINISHED, threadId, runId } as BaseEvent);
+        controller.close();
+      });
     },
   });
 

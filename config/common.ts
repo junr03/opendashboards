@@ -8,6 +8,7 @@ export const common: CommonSettings = {
     dashboardModel: process.env.LLM_DASHBOARD_MODEL ?? process.env.LLM_MODEL ?? "qwen3:32b",
     timeoutMs: 300_000,
     maxAgentRounds: 24,
+    performanceMetrics: process.env.LLM_PERFORMANCE_METRICS === "true",
   },
   posthog: { queryTimeoutMs: 50_000, checkTimeoutMs: 15_000, maxRows: { agent: 200, dashboard: 10_000 } },
   kms: { region: "us-east-1" },

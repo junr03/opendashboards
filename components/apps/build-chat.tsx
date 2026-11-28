@@ -45,6 +45,9 @@ import { dashboardPath, parseAppPath } from "@/lib/apps/paths";
 import { usePublishDashboardResponse, useSetCreatingDashboard } from "./app-workspace";
 import { localThreadStorage } from "@/lib/apps/thread-storage";
 import { cn } from "@/lib/utils";
+import { InferencePerformancePanel } from "./inference-performance";
+import { PERFORMANCE_EVENT, type InferencePerformance } from "@/lib/inference/measurements";
+import { observeResponse } from "@/lib/inference/observe-response";
 
 type Dashboard = { id: string; artifactId: string };
 
@@ -78,6 +81,7 @@ export function BuildChat({
   // Taken once: sending the first prompt refreshes the page, which turns
   // hasPendingPrompt off mid-send, and reopening a thread then would abort it.
   const [startedWithPrompt] = useState(hasPendingPrompt);
+  const [latestPerformance, setLatestPerformance] = useState<(InferencePerformance & { browser_ms: number; thread_id: string }) | null>(null);
   const storage = useMemo(() => localThreadStorage(appId), [appId]);
   // The dashboard on screen: the one in the URL, or the app's first on its home.
   const pathname = usePathname();
@@ -93,8 +97,10 @@ export function BuildChat({
   const llm = useMemo<ChatLLM>(
     () => ({
       streamProtocol: agUIAdapter(),
-      send: ({ threadId, messages, signal }) =>
-        fetch(`/api/apps/${encodeURIComponent(appId)}/chat`, {
+      send: async ({ threadId, messages, signal }) => {
+        const started = performance.now();
+        setLatestPerformance(null);
+        const response = await fetch(`/api/apps/${encodeURIComponent(appId)}/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -105,7 +111,14 @@ export function BuildChat({
             messages: openAIMessageFormat.toApi(messages),
           }),
           signal,
-        }),
+        });
+        return observeResponse(response, value => {
+          const event = value as { type?: string; name?: string; value?: InferencePerformance };
+          if (event.type === "CUSTOM" && event.name === PERFORMANCE_EVENT && event.value) {
+            setLatestPerformance({ ...event.value, browser_ms: performance.now() - started, thread_id: threadId });
+          }
+        }, () => {}, signal);
+      },
     }),
     [appId],
   );
@@ -123,6 +136,7 @@ export function BuildChat({
           <ThreadBar />
           <ThreadMessages hasDashboards={dashboards.length > 0} />
           <Composer />
+          {latestPerformance && <InferencePerformancePanel report={latestPerformance} />}
         </div>
         <TurnEffects appId={appId} dashboards={dashboards} hasPendingPrompt={hasPendingPrompt} />
         {/* A new app's first prompt starts its own conversation: nothing to reopen. */}

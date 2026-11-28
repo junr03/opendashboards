@@ -41,6 +41,7 @@ const model = createServer(async (request, response) => {
     const isEdit = input.messages.some((message) => message.content?.includes("Requested edit:"));
     response.writeHead(200, { "Content-Type": "application/json" });
     response.end(JSON.stringify({ id: randomUUID(), object: "chat.completion", created: 0, model: "fixture-model",
+      usage: { prompt_tokens: 1000, completion_tokens: 100 },
       choices: [{ index: 0, finish_reason: "stop", message: { role: "assistant", content: JSON.stringify({
         program: isEdit ? revised(program) : program,
         scripts: { script_sales: 'return {total: args.period === "7d" ? 70 : 300};' },
@@ -67,6 +68,7 @@ const model = createServer(async (request, response) => {
     } }] });
     chunk({}, "tool_calls");
   }
+  if (input.stream_options?.include_usage) response.write(`data: ${JSON.stringify({ id: "fixture-stream", choices: [], usage: { prompt_tokens: 200, completion_tokens: 20 } })}\n\n`);
   response.end("data: [DONE]\n\n");
 });
 
@@ -76,7 +78,7 @@ try {
   const modelPort = model.address().port;
   const development = process.env.SMOKE_DEV === "1";
   const runtimeEnv = { ...process.env, NODE_ENV: development ? "development" : "production", PORT: String(port), APP_ORIGIN: origin,
-    DATABASE_URL: databaseUrl, DATABASE_URL_UNPOOLED: databaseUrl, LLM_BASE_URL: `http://127.0.0.1:${modelPort}/v1`, LLM_MODEL: "fixture-model", LLM_DASHBOARD_MODEL: "fixture-model",
+    DATABASE_URL: databaseUrl, DATABASE_URL_UNPOOLED: databaseUrl, LLM_BASE_URL: `http://127.0.0.1:${modelPort}/v1`, LLM_MODEL: "fixture-model", LLM_DASHBOARD_MODEL: "fixture-model", LLM_PERFORMANCE_METRICS: "true",
     AUTH_PASSWORD: password, AUTH_SECRET: randomUUID(), AUTH_USER_ID: userId, AUTH_USER_EMAIL: "smoke@localhost", ENCRYPTION_KEY: "ab".repeat(32),
     SUPABASE_URL: "", ENABLE_DEMO_DATA: "", POSTHOG_KEY: "", NEXT_PUBLIC_POSTHOG_KEY: "", NEXT_TELEMETRY_DISABLED: "1",
   };
@@ -131,6 +133,15 @@ try {
   await page.getByRole("textbox", { name: "Message OpenDashboards" }).fill("Revise the section title");
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.getByText("Owned revenue revised", { exact: true })).toBeVisible({ timeout: 90_000 });
+  const performance = page.getByText(/Performance · .*3 model requests/);
+  await expect(performance).toBeVisible({ timeout: 15000 });
+  await performance.click();
+  await expect(page.getByText("1000 / 100", { exact: true })).toBeVisible();
+  const observations = serverLog.split("\n").filter(line => line.startsWith('{"event":"inference_turn"')).map(line => JSON.parse(line));
+  expect(observations.at(-1).calls.map(call => call.phase)).toEqual(["chat", "dashboard", "chat"]);
+  await mkdir("test-results", { recursive: true });
+  await page.screenshot({ path: "test-results/inference-performance.png", fullPage: true });
+  console.log("PASS: performance panel, usage counts and correlated chat/dashboard/chat request measurements.");
   await page.reload();
   await expect(page.getByText("Owned revenue revised", { exact: true })).toBeVisible();
   if (!(await page.getByRole("textbox", { name: "Message OpenDashboards" }).isVisible())) {

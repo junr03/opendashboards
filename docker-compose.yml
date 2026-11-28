@@ -28,6 +28,7 @@ services:
     environment:
       DATABASE_URL: postgres://opendashboards:opendashboards@postgres:5432/opendashboards
       LLM_BASE_URL: ${LLM_BASE_URL:-http://ollama:11434/v1}
+      LLM_PERFORMANCE_METRICS: ${LLM_PERFORMANCE_METRICS:-false}
       APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3100}
     extra_hosts:
       - "host.docker.internal:host-gateway"

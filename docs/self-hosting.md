@@ -124,3 +124,61 @@ corepack pnpm test:e2e
 The ordinary suite resets the dedicated `opendashboards_test` database; never point it at application data. The browser smoke script requires a database name ending `_test` and creates/removes only its own fixture app. It uses a real local HTTP model stand-in to check production login, streamed tool calls, create/edit/reload, filters without new inference, restored local history, and absence of external browser requests. It does not measure a real model's quality, hardware requirements, or throughput. Verify those against your Ollama/vLLM endpoint.
 
 On Linux, `SMOKE_IMAGE=opendashboards:self-hosted corepack pnpm test:e2e` runs the same checks against a locally built image using host networking.
+
+## Measuring real inference performance
+
+Set `LLM_PERFORMANCE_METRICS=true` in the app's Compose environment and restart
+with the new image. It defaults to false. Use Build normally, then expand
+**Performance** below the composer. The last measured turn shows browser wait,
+server duration, inference wait and other server work, with each chat/dashboard
+model request, outcome, input/output tokens and streaming first-token latency.
+The panel belongs to its conversation and is cleared on reload or a new send.
+
+First token includes thinking or tool generation. First output excludes hidden
+thinking. Buffered dashboard generation has no observable first-token time and
+shows a dash. Token usage is reported by the provider; missing counts remain
+unknown. Effective tokens/second is output tokens divided by complete HTTP
+request duration, including model loading, queueing, prompt evaluation and
+generation. It is not decode-only speed. Inference wait is the union of request
+intervals, so overlapping calls are counted once. Other time includes tools,
+validation, database work and SDK retry backoff. Retries appear as separate
+requests; dashboard repairs appear as separate dashboard calls.
+
+Versioned `inference_call` and `inference_turn` JSON records go to server stdout.
+They contain generated trace/call IDs, timestamps, model, phase, status, timing
+and token counts. Prompts, outputs, SQL, tool arguments, data-source identifiers,
+user identities, request headers and credentials are excluded. No external
+telemetry service or new database table is used. Existing container log retention
+controls history; the in-app panel is an ephemeral summary.
+
+For a session report on electricpeak:
+
+```sh
+docker logs --since 30m opendashboards 2>&1 | node scripts/inference-performance-report.mjs
+# Add --json to export statistics. The reporter reads stdin.
+```
+
+Run that command from a checkout containing the report script. Reports separate
+streamed chat and buffered dashboard generation by model, show completed-request
+nearest-rank p50/p95 latency and first-token time, count failures/cancellations separately,
+and compute weighted effective throughput from calls with known usage. Small
+samples have unstable percentiles; collect 10–20 representative interactions,
+including dashboard edits, and retain failures. Simply viewing/filtering an
+existing dashboard runs data queries without inference.
+
+For a repeatable synthetic Ollama baseline, independent of app data:
+
+```sh
+docker exec -i opendashboards node --input-type=module < scripts/benchmark-ollama.mjs
+```
+
+This sends three identical short prompts, thinking disabled and output capped at
+64 tokens. It does not force model unloading. Record the reported load duration
+and compare the first sample with subsequent samples. Ollama's native API returns
+load, prompt-evaluation and generation durations in nanoseconds; the script
+converts them to milliseconds and computes decode speed as
+`eval_count / eval_duration * 1e9`. The cached prompt count is shown when available.
+See [Ollama's usage metrics](https://docs.ollama.com/api/usage). This short baseline
+does not predict dashboard quality or long-context latency. The normal app uses
+the OpenAI-compatible endpoint, which does not expose that native breakdown;
+its measured request timings remain separate from these native server timings.
