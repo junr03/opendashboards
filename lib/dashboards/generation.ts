@@ -8,6 +8,7 @@ import { DashboardError } from "./errors";
 import { checkScript } from "./sandbox";
 import spec from "./generated/dashboard.spec.json";
 import promptOptions from "./generated/dashboard.prompt.json";
+import { withInferencePhase } from "@/lib/inference/performance";
 
 const documentSchema = z.object({
   program: z.string().min(1).max(120_000),
@@ -60,7 +61,7 @@ Never put scripts in the OpenUI program. For edits return the complete program a
     }];
     for (let attempt = 0; attempt < 3; attempt++) {
       signal.throwIfAborted();
-      const completion = await client.chat.completions.create({ model, messages, max_tokens: 16_384, stream: false }, { signal });
+      const completion = await withInferencePhase("dashboard", () => client.chat.completions.create({ model, messages, max_tokens: 16_384, stream: false }, { signal }));
       const content = completion.choices[0]?.message.content ?? "";
       try {
         if (completion.choices[0]?.finish_reason === "length") throw new Error("Output truncated; produce a smaller complete dashboard");

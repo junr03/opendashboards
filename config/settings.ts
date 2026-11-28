@@ -62,6 +62,8 @@ export type CommonSettings = {
     timeoutMs: number;
     /** Model rounds per Build turn, tool calls included. */
     maxAgentRounds: number;
+    /** Numeric per-request/turn observations in the Build panel and structured logs. */
+    performanceMetrics: boolean;
   };
   posthog: {
     /** A dashboard or agent query; inside the dashboard interpreter's 2-minute budget. */
